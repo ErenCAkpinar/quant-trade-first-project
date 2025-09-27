@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.dylib
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.python-version
+
+# Virtual environments
+.env
+.venv
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Data & reports
+reports/*.html
+reports/*.csv
+reports/live_pnl.csv
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+logs/
+*.log

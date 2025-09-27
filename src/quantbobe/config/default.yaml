@@ -1,0 +1,54 @@
+project:
+  seed: 42
+  timezone: "America/New_York"
+data:
+  provider: "yahoo"
+  path: "data/"
+  equities_universe: "sp100.csv"
+  start: "2014-01-01"
+  end: "2025-09-01"
+costs:
+  spread_bps: 2
+  impact_k: 0.9
+  borrow_bps_month: 30
+portfolio:
+  target_vol_ann: 0.10
+  max_name_weight: 0.02
+  beta_neutral: true
+  sector_neutral: true
+sleeves:
+  A_tsmom: { enabled: false }
+  B_carry: { enabled: false }
+  C_xsec_qv:
+    enabled: true
+    rebalance: "M"
+    risk_budget: 0.85
+    params:
+      lookback_mom_months: 12
+      skip_recent_month: true
+      qv_fields: ["ROA","GrossMargin","Accruals","EP"]
+      top_quantile: 0.2
+      bottom_quantile: 0.2
+  D_intraday_rev:
+    enabled: true
+    rebalance: "D"
+    risk_budget: 0.15
+    params:
+      z_entry: 1.5
+      exit: "next_open"
+      earnings_blackout_days: 2
+      min_dollar_vol: 5000000
+regimes:
+  breadth_thresholds: { risk_off: 0.45, risk_on: 0.60 }
+  corr_window_days: 60
+  vix_curve_source: "csv"
+governance:
+  dd_cut: 0.12
+  loss_sigma_cut: 3.0
+reports:
+  html: "reports/equities_bobe.html"
+  trades_csv: "reports/trades.csv"
+live:
+  broker: "alpaca"
+  poll_interval_sec: 60
+  paper_start_cash: 100000.0
