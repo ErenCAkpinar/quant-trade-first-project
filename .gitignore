@@ -32,3 +32,7 @@ reports/live_pnl.csv
 # Logs
 logs/
 *.log
+
+# Node
+node_modules/
+web/.next/

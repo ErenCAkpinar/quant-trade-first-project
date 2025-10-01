@@ -2,11 +2,13 @@ project:
   seed: 42
   timezone: "America/New_York"
 data:
-  provider: "yahoo"
-  path: "data/"
+  provider: "alpaca"
+  path: "data"
   equities_universe: "sp100.csv"
-  start: "2014-01-01"
-  end: "2025-09-01"
+  start: "2018-01-01"
+  end: null
+  timeframe: "1Day"
+  symbols: null
 costs:
   spread_bps: 2
   impact_k: 0.9
@@ -24,8 +26,8 @@ sleeves:
     rebalance: "M"
     risk_budget: 0.85
     params:
-      lookback_mom_months: 12
-      skip_recent_month: true
+      lookback_mom_months: 3
+      skip_recent_month: false
       qv_fields: ["ROA","GrossMargin","Accruals","EP"]
       top_quantile: 0.2
       bottom_quantile: 0.2
@@ -52,3 +54,9 @@ live:
   broker: "alpaca"
   poll_interval_sec: 60
   paper_start_cash: 100000.0
+alpaca:
+  trading_base_url: "https://paper-api.alpaca.markets"
+  data_base_url: "https://data.alpaca.markets"
+  key_env: "ALPACA_API_KEY_ID"
+  secret_env: "ALPACA_API_SECRET_KEY"
+  data_feed: "iex"

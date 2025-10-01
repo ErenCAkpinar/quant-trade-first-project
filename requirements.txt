@@ -12,7 +12,7 @@ requests
 websockets
 python-dotenv
 yfinance
-alpaca-trade-api
+alpaca-py
 numba
 ruff
 black

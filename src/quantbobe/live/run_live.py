@@ -44,7 +44,7 @@ def run_live(config_path: str) -> None:
     meta: list[SymbolMeta] = provider.get_symbol_meta()
     symbols = [m.symbol for m in meta]
 
-    broker = AlpacaBroker()
+    broker = AlpacaBroker(settings.alpaca)
     slippage = SlippageModel(settings.costs.spread_bps, settings.costs.impact_k)
     router = ExecutionRouter(slippage)
 

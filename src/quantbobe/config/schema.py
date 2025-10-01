@@ -12,11 +12,13 @@ class ProjectConfig(BaseModel):
 
 
 class DataConfig(BaseModel):
-    provider: Literal["yahoo", "local_csv"] = "yahoo"
+    provider: Literal["yahoo", "local_csv", "alpaca"] = "yahoo"
     path: str = "data"
     equities_universe: str = "sp100.csv"
     start: date = Field(default_factory=lambda: date(2014, 1, 1))
-    end: date = Field(default_factory=lambda: date(2025, 9, 1))
+    end: Optional[date] = None
+    timeframe: str = "1Day"
+    symbols: Optional[list[str]] = None
 
 
 class CostConfig(BaseModel):
@@ -37,22 +39,22 @@ class PortfolioConfig(BaseModel):
 
 
 class SleeveParams(BaseModel):
-    lookback_mom_months: int | None = None
-    skip_recent_month: bool | None = None
-    qv_fields: list[str] | None = None
-    top_quantile: float | None = None
-    bottom_quantile: float | None = None
-    z_entry: float | None = None
-    exit: Literal["next_open", "next_close"] | None = None
-    earnings_blackout_days: int | None = None
-    min_dollar_vol: float | None = None
+    lookback_mom_months: Optional[int] = None
+    skip_recent_month: Optional[bool] = None
+    qv_fields: Optional[list[str]] = None
+    top_quantile: Optional[float] = None
+    bottom_quantile: Optional[float] = None
+    z_entry: Optional[float] = None
+    exit: Optional[Literal["next_open", "next_close"]] = None
+    earnings_blackout_days: Optional[int] = None
+    min_dollar_vol: Optional[float] = None
 
 
 class SleeveConfig(BaseModel):
     enabled: bool = True
-    rebalance: str | None = None
-    risk_budget: float | None = None
-    params: SleeveParams | None = None
+    rebalance: Optional[str] = None
+    risk_budget: Optional[float] = None
+    params: Optional[SleeveParams] = None
 
 
 class RegimeConfig(BaseModel):
@@ -83,6 +85,14 @@ class LiveConfig(BaseModel):
     paper_start_cash: float = 100000.0
 
 
+class AlpacaConfig(BaseModel):
+    data_base_url: str = "https://data.alpaca.markets"
+    trading_base_url: str = "https://paper-api.alpaca.markets"
+    key_env: str = "ALPACA_API_KEY_ID"
+    secret_env: str = "ALPACA_API_SECRET_KEY"
+    data_feed: Literal["iex", "sip"] = "iex"
+
+
 class SleevesConfig(BaseModel):
     A_tsmom: SleeveConfig = Field(default_factory=lambda: SleeveConfig(enabled=False))
     B_carry: SleeveConfig = Field(default_factory=lambda: SleeveConfig(enabled=False))
@@ -110,6 +120,7 @@ class Settings(BaseModel):
     governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
     reports: ReportConfig = Field(default_factory=ReportConfig)
     live: LiveConfig = Field(default_factory=LiveConfig)
+    alpaca: AlpacaConfig = Field(default_factory=AlpacaConfig)
 
     def enabled_sleeves(self) -> dict[str, SleeveConfig]:
         return {name: sleeve for name, sleeve in self.sleeves.enabled_sleeves()}

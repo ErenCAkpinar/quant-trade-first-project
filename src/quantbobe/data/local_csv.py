@@ -39,7 +39,14 @@ class LocalCSVProvider(IDataProvider):
                 df = pd.read_parquet(path)
                 if "date" not in df.columns:
                     df = df.reset_index().rename(columns={"index": "date"})
-            df = df[(df["date"] >= start) & (df["date"] <= end)].copy()
+                df["date"] = pd.to_datetime(df["date"])
+            if df.empty:
+                continue
+            if df["date"].dt.tz is not None:
+                df["date"] = df["date"].dt.tz_localize(None)
+            start_naive = start.replace(tzinfo=None) if start.tzinfo else start
+            end_naive = end.replace(tzinfo=None) if end.tzinfo else end
+            df = df[(df["date"] >= start_naive) & (df["date"] <= end_naive)].copy()
             df["symbol"] = symbol
             frames.append(df)
         if not frames:
@@ -69,4 +76,4 @@ class LocalCSVProvider(IDataProvider):
 
     def get_symbol_meta(self) -> list[SymbolMeta]:
         df = pd.read_csv(self.universe_file)
-        return [SymbolMeta(symbol=row.symbol, sector=row.get("sector")) for row in df.itertuples()]
+        return [SymbolMeta(symbol=row.symbol, sector=getattr(row, "sector", None)) for row in df.itertuples()]

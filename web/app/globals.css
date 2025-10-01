@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-surface text-white antialiased;
+}
+
+a {
+  @apply text-primary transition hover:text-primary-dark;
+}
+
+.section-heading {
+  @apply text-3xl md:text-4xl font-semibold tracking-tight;
+}
+
+.section-subtitle {
+  @apply text-base md:text-lg text-zinc-300 mt-2 max-w-2xl;
+}
+
+.card {
+  @apply rounded-2xl bg-surface-muted/80 p-6 border border-white/5 shadow-lg shadow-black/30 backdrop-blur;
+}
+
+.badge {
+  @apply inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-wide text-white/80;
+}

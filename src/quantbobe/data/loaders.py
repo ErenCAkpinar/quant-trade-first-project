@@ -8,6 +8,7 @@ import pandas as pd
 
 from ..config.schema import Settings
 from .base import IDataProvider, SymbolMeta
+from .alpaca import AlpacaProvider
 from .local_csv import LocalCSVProvider
 from .yahoo import YahooProvider
 
@@ -19,6 +20,8 @@ def build_provider(settings: Settings) -> IDataProvider:
         return LocalCSVProvider(data_root, universe_path)
     if settings.data.provider == "yahoo":
         return YahooProvider(str(universe_path))
+    if settings.data.provider == "alpaca":
+        return AlpacaProvider(settings)
     raise ValueError(f"Unsupported data provider {settings.data.provider}")
 
 
