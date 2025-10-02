@@ -1,27 +1,27 @@
 const FEATURES = [
   {
-    title: "Multi-Sleeve Engine",
-    body: "Blend cross-sectional quality-value with intraday reversal, sector and beta neutrality enforced automatically."
+    title: "0 · Data Sanity",
+    body: "Start with adjusted prices, clamp outliers at 0.1/99.9, and cross-check with MAD so raw inputs never poison signals."
   },
   {
-    title: "Data Flexibility",
-    body: "Pluggable providers (Alpaca, Yahoo, local CSV) with typed configuration and schema validation."
+    title: "1 · Returns Block",
+    body: "Compute simple and log returns, reconcile CAGR via both algebraic forms, and assert sum(log) ≈ ln(Vend/Vstart)."
   },
   {
-    title: "Paper Execution",
-    body: "Order routing through Alpaca with participation caps, slippage modeling, and live PnL logging."
+    title: "2 · Volatility & Risk",
+    body: "Contrast sample versus population stdev, run EWMA volatility, and align drawdowns across equity and cumulative log curves."
   },
   {
-    title: "Robust Reports",
-    body: "Plotly HTML equity reports, CSV trade logs, and governance summaries ready for audit trails."
+    title: "3 · Core Signals",
+    body: "Pair every momentum, mean-reversion, and technical metric with a redundant twin—12–2 vs log momentum, RSI Wilder vs SMA, ATR Wilder vs MA."
   },
   {
-    title: "Extensible CLI",
-    body: "Commands to ingest data, run backtests, regenerate reports, and launch live loops."
+    title: "4 · Position Sizing",
+    body: "Target volatility, enforce inverse-vol and equal-risk weights, and cap execution-aware Kelly below its plain counterpart."
   },
   {
-    title: "Developer Friendly",
-    body: "Pytest suite, Ruff linting, type checking, and modular design for rapid experimentation."
+    title: "5 · Execution & Reporting",
+    body: "Benchmark fills against VWAP/TWAP, guard slippage with square-root impact, and reconcile Sharpe, Sortino, Calmar, and information ratios."
   }
 ];
 
