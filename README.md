@@ -32,6 +32,6 @@ python -m src.quantbobe.live.run_live --config src/quantbobe/config/default.yaml
 
 ## Notes
 
-- Default config is equities-only using Yahoo Finance for history and Alpaca paper for execution.
+- Default config is equities-only using Alpaca for both historical data and paper execution.
 - Signals and portfolio construction enforce sector and beta neutrality with volatility-targeted sizing.
 - Live trading loop reconciles paper positions every minute and logs fills to `reports/live_pnl.csv`.

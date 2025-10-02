@@ -13,15 +13,39 @@ class RegimeState:
     weights: dict[str, float]
 
 
+def _select_price_field(prices: pd.DataFrame) -> pd.DataFrame:
+    columns = prices.columns
+
+    if isinstance(columns, pd.MultiIndex):
+        fields = columns.get_level_values(0)
+        for field in ("adj_close", "close"):
+            if field in fields:
+                return prices.xs(field, axis=1, level=0)
+        available = ", ".join(sorted(set(map(str, fields))))
+        raise KeyError(f"No price column found. Available column groups: {available}")
+
+    for field in ("adj_close", "close"):
+        if field in columns:
+            selected = prices[field]
+            # For MultiIndex rows (date, symbol), reshape to wide by symbol
+            if isinstance(selected, pd.Series) and selected.index.nlevels > 1:
+                return selected.unstack("symbol")
+            return selected
+
+    available = ", ".join(map(str, columns))
+    raise KeyError(f"No price column found. Available columns: {available}")
+
+
 def trend_breadth(prices: pd.DataFrame, window: int = 200) -> pd.Series:
-    closes = prices["adj_close"].unstack("symbol")
+    closes = _select_price_field(prices)
     ma = closes.rolling(window=window).mean()
     breadth = (closes > ma).sum(axis=1) / closes.count(axis=1)
     return breadth
 
 
 def corr_spike(prices: pd.DataFrame, window: int = 60) -> pd.Series:
-    returns = prices["adj_close"].unstack("symbol").pct_change().dropna()
+    closes = _select_price_field(prices)
+    returns = closes.pct_change().dropna()
     rolling_corr = returns.rolling(window).corr().groupby(level=0).median()
     return rolling_corr
 

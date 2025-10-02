@@ -9,7 +9,7 @@ const FEATURES = [
   },
   {
     title: "Paper Execution",
-    body: "Order routing through Alpaca with participation caps, slippage modelling, and live PnL logging."
+    body: "Order routing through Alpaca with participation caps, slippage modeling, and live PnL logging."
   },
   {
     title: "Robust Reports",
