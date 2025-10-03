@@ -17,6 +17,7 @@ from ..strategy import build_context
 # Constants
 TRADING_DAYS_PER_YEAR = 252
 MAD_SCALE = 1.4826
+PRICE_COLUMNS = ["open", "high", "low", "close", "adj_close"]
 
 
 @dataclass
@@ -85,8 +86,8 @@ class MasterFormulaReport:
     @property
     def sanitized_daily(self) -> pd.DataFrame:
         if self._sanitized_daily is None:
-            winsorized, _ = _winsorize_prices(self.raw_daily, ["open", "high", "low", "close", "adj_close"])
-            sanitized, _ = _mad_clamp_prices(winsorized, ["open", "high", "low", "close", "adj_close"])
+            winsorized, _ = _winsorize_prices(self.raw_daily, PRICE_COLUMNS)
+            sanitized, _ = _mad_clamp_prices(winsorized, PRICE_COLUMNS)
             self._sanitized_daily = sanitized.sort_index()
         return self._sanitized_daily
 
@@ -112,13 +113,20 @@ class MasterFormulaReport:
         return self._equity
 
     def run(self) -> Dict[str, Any]:
-        logger.info("Running master formula report for symbols: {}", ",".join(self.symbols))
+        logger.info(
+            "Running master formula report for symbols: {}",
+            ",".join(self.symbols),
+        )
         report = {
             "metadata": {
                 "risk_free_rate": self.risk_free_rate,
                 "symbols": self.symbols,
-                "period_start": self.sanitized_daily.index.get_level_values("date").min().isoformat(),
-                "period_end": self.sanitized_daily.index.get_level_values("date").max().isoformat(),
+                "period_start": self.sanitized_daily.index.get_level_values("date")
+                .min()
+                .isoformat(),
+                "period_end": self.sanitized_daily.index.get_level_values("date")
+                .max()
+                .isoformat(),
                 "observations": int(len(self.returns)),
             },
             "data_sanity": self._data_sanity_checks(),
@@ -136,8 +144,8 @@ class MasterFormulaReport:
         return report
 
     def _data_sanity_checks(self) -> Dict[str, Any]:
-        winsorized, win_stats = _winsorize_prices(self.raw_daily, ["open", "high", "low", "close", "adj_close"])
-        mad_clamped, mad_stats = _mad_clamp_prices(winsorized, ["open", "high", "low", "close", "adj_close"])
+        winsorized, win_stats = _winsorize_prices(self.raw_daily, PRICE_COLUMNS)
+        mad_clamped, mad_stats = _mad_clamp_prices(winsorized, PRICE_COLUMNS)
         before = self.raw_daily.groupby("symbol")["adj_close"].describe()["std"]
         after = mad_clamped.groupby("symbol")["adj_close"].describe()["std"]
         std_ratio = (after / before).replace({np.inf: np.nan})
@@ -157,7 +165,9 @@ class MasterFormulaReport:
             series = simple[symbol].dropna()
             log_series = log_ret[symbol].dropna()
             if series.empty or log_series.empty:
-                identity[symbol] = CheckResult(np.nan, np.nan, 1e-8, np.nan, False, "insufficient data").to_dict()
+                identity[symbol] = CheckResult(
+                    np.nan, np.nan, 1e-8, np.nan, False, "insufficient data"
+                ).to_dict()
                 cagr[symbol] = np.nan
                 log_cagr[symbol] = np.nan
                 continue
@@ -194,10 +204,14 @@ class MasterFormulaReport:
             ew = latest_ewma.get(symbol)
             ro = latest_rolling.get(symbol)
             if np.isnan(ew) or np.isnan(ro):
-                compare[symbol] = CheckResult(ew, ro, 0.15, np.nan, False, "insufficient data").to_dict()
+                compare[symbol] = CheckResult(
+                    ew, ro, 0.15, np.nan, False, "insufficient data"
+                ).to_dict()
             else:
                 rel_diff = abs(ew - ro) / max(ro, 1e-9)
-                compare[symbol] = CheckResult(ew, ro, 0.15, rel_diff, rel_diff <= 0.15).to_dict()
+                compare[symbol] = CheckResult(
+                    ew, ro, 0.15, rel_diff, rel_diff <= 0.15
+                ).to_dict()
         return {
             "sample_vol": _to_native(sample.to_dict()),
             "population_vol": _to_native(population.to_dict()),
@@ -222,12 +236,16 @@ class MasterFormulaReport:
         compare = {}
         for symbol in self.symbols:
             p = dd_primary.get(symbol)
-            l = dd_log.get(symbol)
-            if np.isnan(p) or np.isnan(l):
-                compare[symbol] = CheckResult(p, l, 1e-3, np.nan, False, "insufficient data").to_dict()
+            log_value = dd_log.get(symbol)
+            if np.isnan(p) or np.isnan(log_value):
+                compare[symbol] = CheckResult(
+                    p, log_value, 1e-3, np.nan, False, "insufficient data"
+                ).to_dict()
             else:
-                diff = abs(p - l)
-                compare[symbol] = CheckResult(p, l, 1e-3, diff, diff <= 1e-3).to_dict()
+                diff = abs(p - log_value)
+                compare[symbol] = CheckResult(
+                    p, log_value, 1e-3, diff, diff <= 1e-3
+                ).to_dict()
         return {
             "max_drawdown_price": _to_native(dd_primary),
             "max_drawdown_log": _to_native(dd_log),
@@ -249,25 +267,29 @@ class MasterFormulaReport:
 
         ema_fast = closes.ewm(span=12, adjust=False).mean()
         ema_slow = closes.ewm(span=26, adjust=False).mean()
-        macd = ema_fast - ema_slow
-
         for symbol in self.symbols:
             price_series = closes[symbol]
             log_series = self.log_returns[symbol]
             mom_primary = _momentum_12_2(price_series)
             mom_log = _momentum_log_approx(log_series)
             if mom_primary.empty or mom_log.empty:
-                momentum[symbol] = CheckResult(np.nan, np.nan, None, np.nan, False, "insufficient history").to_dict()
+                momentum[symbol] = CheckResult(
+                    np.nan, np.nan, None, np.nan, False, "insufficient history"
+                ).to_dict()
             else:
                 latest_p = mom_primary.iloc[-1]
                 latest_l = mom_log.iloc[-1]
                 sign_match = np.sign(latest_p) == np.sign(latest_l)
-                momentum[symbol] = CheckResult(latest_p, latest_l, None, latest_p - latest_l, bool(sign_match)).to_dict()
+                momentum[symbol] = CheckResult(
+                    latest_p, latest_l, None, latest_p - latest_l, bool(sign_match)
+                ).to_dict()
 
             slope_primary = ema_fast[symbol] - ema_slow[symbol]
             slope_cross = _ema_difference(price_series, 10)
             if slope_primary.dropna().empty or slope_cross.dropna().empty:
-                slope[symbol] = CheckResult(np.nan, np.nan, None, np.nan, False, "insufficient history").to_dict()
+                slope[symbol] = CheckResult(
+                    np.nan, np.nan, None, np.nan, False, "insufficient history"
+                ).to_dict()
             else:
                 corr = slope_primary.corr(slope_cross)
                 slope[symbol] = {
@@ -280,39 +302,67 @@ class MasterFormulaReport:
             z_primary = _zscore(returns, window=20)
             z_mad = _zscore_mad(returns, window=20)
             if z_primary.dropna().empty or z_mad.dropna().empty:
-                mean_rev[symbol] = CheckResult(np.nan, np.nan, None, np.nan, False, "insufficient history").to_dict()
+                mean_rev[symbol] = CheckResult(
+                    np.nan, np.nan, None, np.nan, False, "insufficient history"
+                ).to_dict()
             else:
                 latest_primary = z_primary.iloc[-1]
                 latest_mad = z_mad.iloc[-1]
-                mean_rev[symbol] = CheckResult(latest_primary, latest_mad, None, latest_primary - latest_mad, True).to_dict()
+                mean_rev[symbol] = CheckResult(
+                    latest_primary, latest_mad, None, latest_primary - latest_mad, True
+                ).to_dict()
 
             rsi_wilder = _rsi_wilder(price_series, period=14)
             rsi_sma = _rsi_sma(price_series, period=14)
             if rsi_wilder.dropna().empty or rsi_sma.dropna().empty:
-                rsi_checks[symbol] = CheckResult(np.nan, np.nan, None, np.nan, False, "insufficient history").to_dict()
+                rsi_checks[symbol] = CheckResult(
+                    np.nan, np.nan, None, np.nan, False, "insufficient history"
+                ).to_dict()
             else:
                 rmse = math.sqrt(np.nanmean((rsi_wilder - rsi_sma) ** 2))
-                rsi_checks[symbol] = CheckResult(rsi_wilder.iloc[-1], rsi_sma.iloc[-1], None, rmse, True).to_dict()
+                rsi_checks[symbol] = CheckResult(
+                    rsi_wilder.iloc[-1], rsi_sma.iloc[-1], None, rmse, True
+                ).to_dict()
 
             boll_sma = _bollinger(price_series, window=20, method="sma")
             boll_ema = _bollinger(price_series, window=20, method="ema")
             if boll_sma["upper"].dropna().empty or boll_ema["upper"].dropna().empty:
                 bollinger_checks[symbol] = {"note": "insufficient history"}
             else:
-                diff_upper = abs(boll_sma["upper"].iloc[-1] - boll_ema["upper"].iloc[-1])
-                diff_lower = abs(boll_sma["lower"].iloc[-1] - boll_ema["lower"].iloc[-1])
+                diff_upper = abs(
+                    boll_sma["upper"].iloc[-1] - boll_ema["upper"].iloc[-1]
+                )
+                diff_lower = abs(
+                    boll_sma["lower"].iloc[-1] - boll_ema["lower"].iloc[-1]
+                )
                 bollinger_checks[symbol] = {
                     "upper_diff": diff_upper,
                     "lower_diff": diff_lower,
                 }
 
-            atr_wilder = _atr(highs[symbol], lows[symbol], closes_full[symbol], period=14, method="wilder")
-            atr_sma = _atr(highs[symbol], lows[symbol], closes_full[symbol], period=14, method="sma")
+            atr_wilder = _atr(
+                highs[symbol],
+                lows[symbol],
+                closes_full[symbol],
+                period=14,
+                method="wilder",
+            )
+            atr_sma = _atr(
+                highs[symbol],
+                lows[symbol],
+                closes_full[symbol],
+                period=14,
+                method="sma",
+            )
             if atr_wilder.dropna().empty or atr_sma.dropna().empty:
-                atr_checks[symbol] = CheckResult(np.nan, np.nan, None, np.nan, False, "insufficient history").to_dict()
+                atr_checks[symbol] = CheckResult(
+                    np.nan, np.nan, None, np.nan, False, "insufficient history"
+                ).to_dict()
             else:
                 diff = abs(atr_wilder.iloc[-1] - atr_sma.iloc[-1])
-                atr_checks[symbol] = CheckResult(atr_wilder.iloc[-1], atr_sma.iloc[-1], None, diff, True).to_dict()
+                atr_checks[symbol] = CheckResult(
+                    atr_wilder.iloc[-1], atr_sma.iloc[-1], None, diff, True
+                ).to_dict()
 
         return {
             "momentum": momentum,
@@ -338,6 +388,10 @@ class MasterFormulaReport:
         sigma = self.returns.cov()
         inv_vol = 1 / np.sqrt(np.diag(sigma))
         inv_vol_weights = inv_vol / inv_vol.sum()
+        inverse_vol_dict = {
+            symbol: float(inv_vol_weights[idx])
+            for idx, symbol in enumerate(self.symbols)
+        }
         erc_weights, erc_contrib = _equal_risk_contribution(sigma)
 
         mean_returns = self.returns.mean()
@@ -353,7 +407,7 @@ class MasterFormulaReport:
                 exec_kelly[symbol] = np.nan
                 live_fraction[symbol] = False
                 continue
-            k_plain = mu / (sigma_r ** 2)
+            k_plain = mu / (sigma_r**2)
             k_exec, live_ok = _execution_aware_kelly(
                 mu,
                 sigma_r,
@@ -369,7 +423,7 @@ class MasterFormulaReport:
 
         return {
             "vol_target_leverage": _to_native(leverage),
-            "risk_parity_inverse_vol": _to_native(dict(zip(self.symbols, inv_vol_weights))),
+            "risk_parity_inverse_vol": _to_native(inverse_vol_dict),
             "risk_parity_erc_weights": _to_native(erc_weights),
             "risk_parity_erc_contrib": _to_native(erc_contrib),
             "plain_kelly": _to_native(plain_kelly),
@@ -412,14 +466,19 @@ class MasterFormulaReport:
                 twap_vals.append(day_twap)
                 slippage_vals.append(trade["price"] - day_vwap)
                 if adv and adv > 0:
-                    guard_vals.append(self.settings.costs.impact_k * math.sqrt(trade["abs_quantity"] / adv))
+                    guard_vals.append(
+                        self.settings.costs.impact_k
+                        * math.sqrt(trade["abs_quantity"] / adv)
+                    )
             if vwap_vals:
                 trade_vwap = np.average(vwap_vals, weights=sym_trades["abs_quantity"])
                 trade_twap = np.average(twap_vals, weights=sym_trades["abs_quantity"])
                 vwap[symbol] = trade_vwap
                 twap[symbol] = trade_twap
                 slippage[symbol] = float(np.mean(slippage_vals))
-                impact_guard[symbol] = float(np.max(guard_vals) if guard_vals else np.nan)
+                impact_guard[symbol] = float(
+                    np.max(guard_vals) if guard_vals else np.nan
+                )
         return {
             "average_vwap": vwap,
             "average_twap": twap,
@@ -441,7 +500,11 @@ class MasterFormulaReport:
         cagr = _cagr_from_equity(eq_curve)
         calmar = cagr / mdd if mdd not in (0, np.nan) else np.nan
 
-        benchmark = self.cumulative_equity.iloc[:, 0] if self.cumulative_equity.shape[1] > 0 else None
+        benchmark = (
+            self.cumulative_equity.iloc[:, 0]
+            if self.cumulative_equity.shape[1] > 0
+            else None
+        )
         info_ratio = {}
         if benchmark is not None:
             bench_returns = benchmark.pct_change().dropna()
@@ -452,7 +515,9 @@ class MasterFormulaReport:
                     continue
                 active = asset_ret.align(bench_returns, join="inner")[0] - bench_returns
                 tracking_error = active.std()
-                info_ratio[symbol] = active.mean() / tracking_error if tracking_error != 0 else np.nan
+                info_ratio[symbol] = (
+                    active.mean() / tracking_error if tracking_error != 0 else np.nan
+                )
 
         var95 = self.returns.quantile(0.05)
         var99 = self.returns.quantile(0.01)
@@ -485,7 +550,9 @@ class MasterFormulaReport:
             "adf_stat": adf_stat,
             "adf_pvalue": pvalue,
             "latest_zscore": z.iloc[-1] if not z.dropna().empty else np.nan,
-            "rolling_mean_zscore": rolling.iloc[-1] if not rolling.dropna().empty else np.nan,
+            "rolling_mean_zscore": (
+                rolling.iloc[-1] if not rolling.dropna().empty else np.nan
+            ),
         }
 
     def _options_block(self) -> Dict[str, Any]:
@@ -522,8 +589,12 @@ class MasterFormulaReport:
         price_log = np.log((1 + self.returns).prod())
         entries["return_identity"] = _to_native((log_sum - price_log).abs().to_dict())
         # 2. Annualization consistency (EWMA vs rolling)
-        ewma = self.returns.ewm(alpha=1 - 0.94).std().iloc[-1] * math.sqrt(TRADING_DAYS_PER_YEAR)
-        rolling = self.returns.rolling(window=60, min_periods=20).std().iloc[-1] * math.sqrt(TRADING_DAYS_PER_YEAR)
+        ewma = self.returns.ewm(alpha=1 - 0.94).std().iloc[-1] * math.sqrt(
+            TRADING_DAYS_PER_YEAR
+        )
+        rolling = self.returns.rolling(window=60, min_periods=20).std().iloc[
+            -1
+        ] * math.sqrt(TRADING_DAYS_PER_YEAR)
         entries["annualization_consistency"] = _to_native((ewma / rolling).to_dict())
         # 3. Momentum parity sign agreement ratio
         ratio = {}
@@ -548,7 +619,9 @@ class MasterFormulaReport:
             if joined.empty:
                 rsi_rmse[symbol] = np.nan
             else:
-                rsi_rmse[symbol] = float(np.sqrt(np.mean((joined.iloc[:, 0] - joined.iloc[:, 1]) ** 2)))
+                rsi_rmse[symbol] = float(
+                    np.sqrt(np.mean((joined.iloc[:, 0] - joined.iloc[:, 1]) ** 2))
+                )
         entries["rsi_rmse"] = rsi_rmse
         # 5. ATR variant difference
         atr_gap = {}
@@ -569,13 +642,14 @@ class MasterFormulaReport:
         _, contrib = _equal_risk_contribution(sigma)
         if contrib:
             avg = np.mean(list(contrib.values()))
-            entries["risk_parity_deviation"] = {k: abs(v - avg) / avg for k, v in contrib.items() if avg}
+            entries["risk_parity_deviation"] = {
+                k: abs(v - avg) / avg for k, v in contrib.items() if avg
+            }
         else:
             entries["risk_parity_deviation"] = {}
         # 7. Kelly sanity
         mean_returns = self.returns.mean()
         vol_returns = self.returns.std()
-        kelly_plain = mean_returns / (vol_returns ** 2)
         kelly_exec = {}
         for symbol in self.symbols:
             _, ok = _execution_aware_kelly(
@@ -596,7 +670,9 @@ class MasterFormulaReport:
             trades["abs_notional"] = trades["notional"].abs()
             trades["abs_quantity"] = trades["quantity"].abs()
             trades["date"] = pd.to_datetime(trades["date"])
-            price_data = self.sanitized_daily.reset_index().set_index(["date", "symbol"])
+            price_data = self.sanitized_daily.reset_index().set_index(
+                ["date", "symbol"]
+            )
             for symbol in self.symbols:
                 sym_trades = trades[trades["symbol"] == symbol]
                 if sym_trades.empty:
@@ -614,25 +690,37 @@ class MasterFormulaReport:
                     row = daily.loc[day]
                     ref_price = row["close"]
                     slippages.append(abs(trade["price"] - ref_price))
-                    impacts.append(self.settings.costs.impact_k * math.sqrt(trade["abs_quantity"] / adv))
+                    impacts.append(
+                        self.settings.costs.impact_k
+                        * math.sqrt(trade["abs_quantity"] / adv)
+                    )
                 if slippages:
                     impact_ok[symbol] = max(slippages) <= max(impacts) * 1.1
             entries["impact_vs_slippage"] = impact_ok
         else:
             entries["impact_vs_slippage"] = {}
         # 9. Sharpe vs t-stat
-        sharpe = (self.returns.mean() - self.risk_free_rate / TRADING_DAYS_PER_YEAR) / self.returns.std()
+        sharpe = (
+            self.returns.mean() - self.risk_free_rate / TRADING_DAYS_PER_YEAR
+        ) / self.returns.std()
         t_stat = (self.returns.mean() - self.risk_free_rate / TRADING_DAYS_PER_YEAR) / (
             self.returns.std(ddof=1) / math.sqrt(len(self.returns))
         )
-        entries["sharpe_vs_tstat"] = _to_native((t_stat - sharpe * math.sqrt(len(self.returns))).abs().to_dict())
+        entries["sharpe_vs_tstat"] = _to_native(
+            (t_stat - sharpe * math.sqrt(len(self.returns))).abs().to_dict()
+        )
         # 10. Put-call parity gap (already computed) -- reuse options block
         options = self._options_block()
         entries["put_call_parity_gap"] = options.get("parity_gap")
         return entries
 
 
-def _winsorize_prices(df: pd.DataFrame, columns: Iterable[str], lower: float = 0.001, upper: float = 0.999) -> Tuple[pd.DataFrame, Dict[str, Dict[str, float]]]:
+def _winsorize_prices(
+    df: pd.DataFrame,
+    columns: Iterable[str],
+    lower: float = 0.001,
+    upper: float = 0.999,
+) -> Tuple[pd.DataFrame, Dict[str, Dict[str, float]]]:
     clipped = df.copy()
     stats: Dict[str, Dict[str, float]] = {}
     for symbol, group in df.groupby(level="symbol"):
@@ -641,14 +729,20 @@ def _winsorize_prices(df: pd.DataFrame, columns: Iterable[str], lower: float = 0
             series = group[column]
             lower_q = series.quantile(lower)
             upper_q = series.quantile(upper)
-            clipped.loc[(slice(None), symbol), column] = series.clip(lower_q, upper_q).values
+            clipped.loc[(slice(None), symbol), column] = series.clip(
+                lower_q, upper_q
+            ).values
             symbol_stats[f"{column}_lower"] = float(lower_q)
             symbol_stats[f"{column}_upper"] = float(upper_q)
         stats[symbol] = symbol_stats
     return clipped, stats
 
 
-def _mad_clamp_prices(df: pd.DataFrame, columns: Iterable[str], threshold: float = 3.5) -> Tuple[pd.DataFrame, Dict[str, Dict[str, float]]]:
+def _mad_clamp_prices(
+    df: pd.DataFrame,
+    columns: Iterable[str],
+    threshold: float = 3.5,
+) -> Tuple[pd.DataFrame, Dict[str, Dict[str, float]]]:
     clamped = df.copy()
     stats: Dict[str, Dict[str, float]] = {}
     for symbol, group in df.groupby(level="symbol"):
@@ -664,7 +758,9 @@ def _mad_clamp_prices(df: pd.DataFrame, columns: Iterable[str], threshold: float
             else:
                 lower = median - threshold * scale
                 upper = median + threshold * scale
-            clamped.loc[(slice(None), symbol), column] = series.clip(lower, upper).values
+            clamped.loc[(slice(None), symbol), column] = series.clip(
+                lower, upper
+            ).values
             symbol_stats[f"{column}_lower"] = float(lower)
             symbol_stats[f"{column}_upper"] = float(upper)
         stats[symbol] = symbol_stats
@@ -714,7 +810,9 @@ def _momentum_12_2(prices: pd.Series) -> pd.Series:
     if prices.dropna().empty:
         return pd.Series(dtype=float)
     price = prices.dropna()
-    return ((price.shift(1) / price.shift(252)) - 1) - ((price.shift(1) / price.shift(21)) - 1)
+    return ((price.shift(1) / price.shift(252)) - 1) - (
+        (price.shift(1) / price.shift(21)) - 1
+    )
 
 
 def _momentum_log_approx(log_returns: pd.Series) -> pd.Series:
@@ -739,7 +837,9 @@ def _zscore(series: pd.Series, window: int) -> pd.Series:
 
 def _zscore_mad(series: pd.Series, window: int) -> pd.Series:
     rolling_median = series.rolling(window=window, min_periods=window // 2).median()
-    rolling_mad = series.rolling(window=window, min_periods=window // 2).apply(lambda x: np.median(np.abs(x - np.median(x))), raw=False)
+    rolling_mad = series.rolling(window=window, min_periods=window // 2).apply(
+        lambda x: np.median(np.abs(x - np.median(x))), raw=False
+    )
     scale = rolling_mad * MAD_SCALE
     return (series - rolling_median) / scale.replace(0, np.nan)
 
@@ -765,7 +865,9 @@ def _rsi_sma(prices: pd.Series, period: int = 14) -> pd.Series:
     return 100 - (100 / (1 + rs))
 
 
-def _bollinger(prices: pd.Series, window: int, method: str = "sma") -> Dict[str, pd.Series]:
+def _bollinger(
+    prices: pd.Series, window: int, method: str = "sma"
+) -> Dict[str, pd.Series]:
     if method == "ema":
         mid = prices.ewm(span=window, adjust=False).mean()
         std = prices.ewm(span=window, adjust=False).std()
@@ -777,7 +879,13 @@ def _bollinger(prices: pd.Series, window: int, method: str = "sma") -> Dict[str,
     return {"mid": mid, "upper": upper, "lower": lower}
 
 
-def _atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int, method: str = "wilder") -> pd.Series:
+def _atr(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    period: int,
+    method: str = "wilder",
+) -> pd.Series:
     high_low = high - low
     high_close = (high - close.shift(1)).abs()
     low_close = (low - close.shift(1)).abs()
@@ -787,7 +895,9 @@ def _atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int, method:
     return tr.ewm(alpha=1 / period, adjust=False).mean()
 
 
-def _equal_risk_contribution(covariance: pd.DataFrame) -> Tuple[Dict[str, float], Dict[str, float]]:
+def _equal_risk_contribution(
+    covariance: pd.DataFrame,
+) -> Tuple[Dict[str, float], Dict[str, float]]:
     if covariance.empty:
         return {}, {}
     symbols = covariance.columns.tolist()
@@ -805,8 +915,12 @@ def _equal_risk_contribution(covariance: pd.DataFrame) -> Tuple[Dict[str, float]
         weights *= adjustment
         weights /= weights.sum()
     contributions = weights * (cov @ weights)
-    weight_dict = {symbol: float(weight) for symbol, weight in zip(symbols, weights)}
-    contrib_dict = {symbol: float(contrib) for symbol, contrib in zip(symbols, contributions)}
+    weight_dict = {
+        symbol: float(weights[idx]) for idx, symbol in enumerate(symbols)
+    }
+    contrib_dict = {
+        symbol: float(contributions[idx]) for idx, symbol in enumerate(symbols)
+    }
     return weight_dict, contrib_dict
 
 
@@ -834,7 +948,7 @@ def _execution_aware_kelly(
         return np.nan, False
     impact = impact_k * math.sqrt(avg_qty / adv)
     cost = (spread_bps / 10000) * turnover
-    denom = sigma ** 2
+    denom = sigma**2
     if denom == 0:
         return np.nan, False
     plain = mu / denom
@@ -874,27 +988,38 @@ def _black_scholes_summary(
 ) -> Tuple[float, float, float, Dict[str, float]]:
     if sigma <= 0 or maturity <= 0 or spot <= 0 or strike <= 0:
         return np.nan, np.nan, np.nan, {}
-    d1 = (math.log(spot / strike) + (risk_free + 0.5 * sigma ** 2) * maturity) / (sigma * math.sqrt(maturity))
+    d1 = (math.log(spot / strike) + (risk_free + 0.5 * sigma**2) * maturity) / (
+        sigma * math.sqrt(maturity)
+    )
     d2 = d1 - sigma * math.sqrt(maturity)
-    call = spot * _norm_cdf(d1) - strike * math.exp(-risk_free * maturity) * _norm_cdf(d2)
-    put = strike * math.exp(-risk_free * maturity) * _norm_cdf(-d2) - spot * _norm_cdf(-d1)
+    call = spot * _norm_cdf(d1) - strike * math.exp(-risk_free * maturity) * _norm_cdf(
+        d2
+    )
+    put = strike * math.exp(-risk_free * maturity) * _norm_cdf(-d2) - spot * _norm_cdf(
+        -d1
+    )
     parity_gap = (call - put) - (spot - strike * math.exp(-risk_free * maturity))
     greeks = {
         "delta_call": _norm_cdf(d1),
         "delta_put": _norm_cdf(d1) - 1,
         "gamma": _norm_pdf(d1) / (spot * sigma * math.sqrt(maturity)),
         "vega": spot * _norm_pdf(d1) * math.sqrt(maturity),
-        "theta_call": -spot * _norm_pdf(d1) * sigma / (2 * math.sqrt(maturity)) - risk_free * strike * math.exp(-risk_free * maturity) * _norm_cdf(d2),
-        "theta_put": -spot * _norm_pdf(d1) * sigma / (2 * math.sqrt(maturity)) + risk_free * strike * math.exp(-risk_free * maturity) * _norm_cdf(-d2),
+        "theta_call": -spot * _norm_pdf(d1) * sigma / (2 * math.sqrt(maturity))
+        - risk_free * strike * math.exp(-risk_free * maturity) * _norm_cdf(d2),
+        "theta_put": -spot * _norm_pdf(d1) * sigma / (2 * math.sqrt(maturity))
+        + risk_free * strike * math.exp(-risk_free * maturity) * _norm_cdf(-d2),
         "rho_call": strike * maturity * math.exp(-risk_free * maturity) * _norm_cdf(d2),
-        "rho_put": -strike * maturity * math.exp(-risk_free * maturity) * _norm_cdf(-d2),
+        "rho_put": -strike
+        * maturity
+        * math.exp(-risk_free * maturity)
+        * _norm_cdf(-d2),
     }
     greeks = {k: float(v) for k, v in greeks.items()}
     return float(call), float(put), float(parity_gap), greeks
 
 
 def _norm_pdf(x: float) -> float:
-    return 1 / math.sqrt(2 * math.pi) * math.exp(-0.5 * x ** 2)
+    return 1 / math.sqrt(2 * math.pi) * math.exp(-0.5 * x**2)
 
 
 def _norm_cdf(x: float) -> float:
@@ -938,11 +1063,18 @@ __all__ = ["generate_master_report", "MasterFormulaReport"]
 def _main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(description="Generate master formula analytics report")
+    parser = argparse.ArgumentParser(
+        description="Generate master formula analytics report"
+    )
     parser.add_argument("--config", required=True, help="Path to YAML config")
     parser.add_argument("--output", required=False, help="Optional output JSON path")
     parser.add_argument("--trades", required=False, help="Optional trades CSV override")
-    parser.add_argument("--risk-free", type=float, default=0.0, help="Annual risk-free rate in decimal form")
+    parser.add_argument(
+        "--risk-free",
+        type=float,
+        default=0.0,
+        help="Annual risk-free rate in decimal form",
+    )
     args = parser.parse_args()
 
     report = generate_master_report(
