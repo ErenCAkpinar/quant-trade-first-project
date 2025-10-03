@@ -58,7 +58,9 @@ class SleeveConfig(BaseModel):
 
 
 class RegimeConfig(BaseModel):
-    breadth_thresholds: Dict[str, float] = Field(default_factory=lambda: {"risk_off": 0.45, "risk_on": 0.6})
+    breadth_thresholds: Dict[str, float] = Field(
+        default_factory=lambda: {"risk_off": 0.45, "risk_on": 0.6}
+    )
     corr_window_days: int = 60
     vix_curve_source: str = "csv"
 
@@ -96,9 +98,19 @@ class AlpacaConfig(BaseModel):
 class SleevesConfig(BaseModel):
     A_tsmom: SleeveConfig = Field(default_factory=lambda: SleeveConfig(enabled=False))
     B_carry: SleeveConfig = Field(default_factory=lambda: SleeveConfig(enabled=False))
-    C_xsec_qv: SleeveConfig = Field(default_factory=lambda: SleeveConfig(enabled=True, rebalance="M", risk_budget=0.85))
-    D_intraday_rev: SleeveConfig = Field(default_factory=lambda: SleeveConfig(enabled=True, rebalance="D", risk_budget=0.15))
-    E_vol_premia: SleeveConfig = Field(default_factory=lambda: SleeveConfig(enabled=False))
+    C_xsec_qv: SleeveConfig = Field(
+        default_factory=lambda: SleeveConfig(
+            enabled=True, rebalance="M", risk_budget=0.85
+        )
+    )
+    D_intraday_rev: SleeveConfig = Field(
+        default_factory=lambda: SleeveConfig(
+            enabled=True, rebalance="D", risk_budget=0.15
+        )
+    )
+    E_vol_premia: SleeveConfig = Field(
+        default_factory=lambda: SleeveConfig(enabled=False)
+    )
 
     def enabled_sleeves(self) -> Iterable[tuple[str, SleeveConfig]]:
         for name, cfg in self.model_dump().items():

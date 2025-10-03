@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List
+from typing import Iterable, List
 
 import pandas as pd
 
@@ -21,7 +21,9 @@ class ExecutionRouter:
     def __init__(self, slippage: SlippageModel) -> None:
         self.slippage = slippage
 
-    def build_orders(self, slices: Iterable[OrderSlice], equity: float) -> List[OrderTicket]:
+    def build_orders(
+        self, slices: Iterable[OrderSlice], equity: float
+    ) -> List[OrderTicket]:
         tickets: list[OrderTicket] = []
         for slc in slices:
             notional = equity * (slc.target - slc.current)
@@ -32,16 +34,30 @@ class ExecutionRouter:
             participation = min(abs(base_qty) / 1_000_000, 1.0)
             cost = self.slippage.estimate_cost(participation)
             limit_price = slc.price * (1 + cost if side == "buy" else 1 - cost)
-            ticket = OrderTicket(symbol=slc.symbol, qty=base_qty, side=side, type="limit", limit_price=limit_price)
+            ticket = OrderTicket(
+                symbol=slc.symbol,
+                qty=base_qty,
+                side=side,
+                type="limit",
+                limit_price=limit_price,
+            )
             tickets.append(ticket)
         return tickets
 
-    def reconcile_positions(self, target_weights: pd.Series, current_weights: pd.Series, prices: pd.Series, equity: float) -> List[OrderSlice]:
+    def reconcile_positions(
+        self,
+        target_weights: pd.Series,
+        current_weights: pd.Series,
+        prices: pd.Series,
+        equity: float,
+    ) -> List[OrderSlice]:
         slices: list[OrderSlice] = []
         for symbol, target in target_weights.items():
             price = float(prices.get(symbol, 0.0))
             if price == 0:
                 continue
             current = float(current_weights.get(symbol, 0.0))
-            slices.append(OrderSlice(symbol=symbol, target=target, current=current, price=price))
+            slices.append(
+                OrderSlice(symbol=symbol, target=target, current=current, price=price)
+            )
         return slices

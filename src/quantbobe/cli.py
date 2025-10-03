@@ -8,9 +8,12 @@ import pandas as pd
 from loguru import logger
 
 from .backtest import BacktestEngine, ReportBuilder
-from .config.loader import load_settings
-from .strategy import StrategyContext, aggregate_target_weights, build_context, compute_sleeve_weights
 from .live.run_live import run_live
+from .strategy import (
+    aggregate_target_weights,
+    build_context,
+    compute_sleeve_weights,
+)
 
 
 def ingest_command(config_path: str) -> None:
@@ -38,7 +41,9 @@ def backtest_command(config_path: str) -> None:
     result = engine.run(ctx.daily, daily_targets)
     trades_df = pd.DataFrame([t.__dict__ for t in result.trades])
     if trades_df.empty:
-        trades_df = pd.DataFrame(columns=["date", "symbol", "quantity", "price", "notional", "sleeve"])
+        trades_df = pd.DataFrame(
+            columns=["date", "symbol", "quantity", "price", "notional", "sleeve"]
+        )
     report = ReportBuilder(result.equity_curve, trades_df, result.positions)
     report.to_html(ctx.settings.reports.html)
     report.trades_to_csv(ctx.settings.reports.trades_csv)

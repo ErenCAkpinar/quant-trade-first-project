@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from datetime import timedelta
-from typing import Iterable
-
 import numpy as np
 import pandas as pd
 
@@ -48,12 +45,14 @@ def vwap_zscores(
         vwap = compute_vwap(group.reset_index(level="symbol", drop=True))
         zscore = (last_close - vwap) / max(np.std(group["close"].values[-20:]), 1e-3)
         sector = sectors.get(symbol, "Unknown")
-        signals.append({
-            "symbol": symbol,
-            "sector": sector,
-            "zscore": zscore,
-            "signal": float(np.clip(-zscore / z_entry, -1.5, 1.5)),
-        })
+        signals.append(
+            {
+                "symbol": symbol,
+                "sector": sector,
+                "zscore": zscore,
+                "signal": float(np.clip(-zscore / z_entry, -1.5, 1.5)),
+            }
+        )
     if not signals:
         return pd.DataFrame()
     df = pd.DataFrame(signals)

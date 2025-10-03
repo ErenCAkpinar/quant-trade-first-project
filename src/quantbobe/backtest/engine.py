@@ -33,10 +33,14 @@ class BacktestEngine:
         self.costs = costs
         self.slippage = SlippageModel(costs.spread_bps, costs.impact_k)
 
-    def run(self, prices: pd.DataFrame, target_weights: Dict[str, pd.DataFrame], initial_equity: float = 1_000_000.0) -> BacktestResult:
+    def run(
+        self,
+        prices: pd.DataFrame,
+        target_weights: Dict[str, pd.DataFrame],
+        initial_equity: float = 1_000_000.0,
+    ) -> BacktestResult:
         closes = prices["close"].unstack("symbol")
         opens = prices["open"].unstack("symbol")
-        adj_close = prices.get("adj_close", closes).unstack("symbol") if "adj_close" in prices.columns else closes
         dates = closes.index
 
         positions = pd.DataFrame(0.0, index=dates, columns=closes.columns)
@@ -51,7 +55,9 @@ class BacktestEngine:
             price_row = opens.iloc[i] if i < len(opens) else closes.iloc[i]
             day_close = closes.iloc[i]
 
-            desired_weight = sum(df.loc[date] for df in target_weights.values() if date in df.index)
+            desired_weight = sum(
+                df.loc[date] for df in target_weights.values() if date in df.index
+            )
             desired_weight = desired_weight.reindex(closes.columns).fillna(0.0)
 
             equity_prev = equity.iloc[i - 1] if i > 0 else initial_equity
@@ -69,10 +75,21 @@ class BacktestEngine:
                 qty = notional / max(trade_price, 1e-6)
                 current_pos[symbol] += qty
                 cash.iloc[i] -= qty * trade_price
-                trades.append(Trade(date=date, symbol=symbol, quantity=qty, price=trade_price, notional=qty * trade_price, sleeve="aggregate"))
+                trades.append(
+                    Trade(
+                        date=date,
+                        symbol=symbol,
+                        quantity=qty,
+                        price=trade_price,
+                        notional=qty * trade_price,
+                        sleeve="aggregate",
+                    )
+                )
 
             mark_to_market = (current_pos * day_close).sum()
-            borrow_cost = (current_pos[current_pos < 0] * day_close[current_pos < 0]).sum() * borrow_daily
+            borrow_cost = (
+                current_pos[current_pos < 0] * day_close[current_pos < 0]
+            ).sum() * borrow_daily
             cash.iloc[i] -= borrow_cost
             equity.iloc[i] = cash.iloc[i] + mark_to_market
             positions.iloc[i] = current_pos
@@ -81,4 +98,6 @@ class BacktestEngine:
                 cash.iloc[i + 1] = cash.iloc[i]
 
         pnl = equity.diff().fillna(0.0)
-        return BacktestResult(equity_curve=equity, positions=positions, trades=trades, pnl=pnl)
+        return BacktestResult(
+            equity_curve=equity, positions=positions, trades=trades, pnl=pnl
+        )

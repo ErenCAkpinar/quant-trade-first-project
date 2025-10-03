@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Iterable
-
 import numpy as np
 import pandas as pd
 
 
-def _compute_return(prices: pd.Series, lookback: int, skip_months: int = 1) -> pd.Series:
+def _compute_return(
+    prices: pd.Series, lookback: int, skip_months: int = 1
+) -> pd.Series:
     offset = skip_months * 21
     lag = lookback * 21 + offset
     shifted = prices.shift(lag)
@@ -31,14 +31,22 @@ def cross_sectional_momentum(
     momentum = momentum.dropna()
     if momentum.empty:
         return pd.DataFrame()
-    df = momentum.reset_index().rename(columns={"level_0": "date"}) if "level_0" in momentum.index.names else momentum.reset_index()
+    df = (
+        momentum.reset_index().rename(columns={"level_0": "date"})
+        if "level_0" in momentum.index.names
+        else momentum.reset_index()
+    )
     df.columns = ["date", "symbol", "momentum"]
     df["sector"] = df["symbol"].map(sectors)
     results: list[pd.DataFrame] = []
-    for date, group in df.groupby("date"):
+    for _date, group in df.groupby("date"):
         ranked = group.copy()
-        ranked["rank"] = ranked.groupby("sector")["momentum"].transform(lambda x: x.rank(pct=True))
-        ranked["signal"] = np.where(ranked["rank"] >= 0.8, 1.0, np.where(ranked["rank"] <= 0.2, -1.0, 0.0))
+        ranked["rank"] = ranked.groupby("sector")["momentum"].transform(
+            lambda x: x.rank(pct=True)
+        )
+        ranked["signal"] = np.where(
+            ranked["rank"] >= 0.8, 1.0, np.where(ranked["rank"] <= 0.2, -1.0, 0.0)
+        )
         ranked["weight_hint"] = ranked["rank"] - 0.5
         results.append(ranked)
     combined = pd.concat(results, ignore_index=True)

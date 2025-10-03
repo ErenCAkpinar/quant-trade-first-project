@@ -6,11 +6,19 @@ from typing import Dict
 import pandas as pd
 import plotly.graph_objects as go
 
-from .metrics import calmar_ratio, max_drawdown, sharpe_ratio, sortino_ratio, value_at_risk
+from .metrics import (
+    calmar_ratio,
+    max_drawdown,
+    sharpe_ratio,
+    sortino_ratio,
+    value_at_risk,
+)
 
 
 class ReportBuilder:
-    def __init__(self, equity: pd.Series, trades: pd.DataFrame, positions: pd.DataFrame) -> None:
+    def __init__(
+        self, equity: pd.Series, trades: pd.DataFrame, positions: pd.DataFrame
+    ) -> None:
         self.equity = equity
         self.trades = trades
         self.positions = positions
@@ -18,7 +26,9 @@ class ReportBuilder:
     def build_summary(self) -> Dict[str, float]:
         returns = self.equity.pct_change().dropna()
         return {
-            "CAGR": (self.equity.iloc[-1] / self.equity.iloc[0]) ** (252 / len(self.equity)) - 1,
+            "CAGR": (self.equity.iloc[-1] / self.equity.iloc[0])
+            ** (252 / len(self.equity))
+            - 1,
             "Sharpe": sharpe_ratio(returns),
             "Sortino": sortino_ratio(returns),
             "MaxDD": max_drawdown(self.equity),
@@ -32,14 +42,23 @@ class ReportBuilder:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=self.equity.index, y=self.equity.values, name="Equity"))
+        fig.add_trace(
+            go.Scatter(x=self.equity.index, y=self.equity.values, name="Equity")
+        )
         summary = self.build_summary()
         metrics_table = go.Table(
             header=dict(values=list(summary.keys())),
             cells=dict(values=[list(summary.values())]),
         )
         fig2 = go.Figure(data=[metrics_table])
-        html = f"<h1>Equity Curve</h1>{fig.to_html(full_html=False)}<h2>Summary</h2>{fig2.to_html(full_html=False)}"
+        equity_html = fig.to_html(full_html=False)
+        summary_html = fig2.to_html(full_html=False)
+        html = (
+            "<h1>Equity Curve</h1>"
+            f"{equity_html}"
+            "<h2>Summary</h2>"
+            f"{summary_html}"
+        )
         path.write_text(html, encoding="utf-8")
 
     def trades_to_csv(self, path: str | Path) -> None:

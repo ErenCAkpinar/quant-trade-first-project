@@ -28,7 +28,9 @@ def _current_prices(history: pd.DataFrame) -> pd.Series:
     return closes.iloc[-1]
 
 
-def _positions_to_weights(positions: dict[str, float], prices: pd.Series, equity: float) -> pd.Series:
+def _positions_to_weights(
+    positions: dict[str, float], prices: pd.Series, equity: float
+) -> pd.Series:
     weights = {}
     for symbol, qty in positions.items():
         price = prices.get(symbol)
@@ -67,16 +69,26 @@ def run_live(config_path: str) -> None:
             logger.warning("No history fetched; retrying")
             time.sleep(settings.live.poll_interval_sec)
             continue
-        ctx = StrategyContext(settings=settings, provider=provider, meta=meta, daily=history, fundamentals=pd.DataFrame())
+        ctx = StrategyContext(
+            settings=settings,
+            provider=provider,
+            meta=meta,
+            daily=history,
+            fundamentals=pd.DataFrame(),
+        )
         sleeve_weights = compute_sleeve_weights(ctx)
         target = aggregate_target_weights(ctx, sleeve_weights)
         latest_target = target.iloc[-1]
         prices = _current_prices(history)
         cash = broker.get_cash() or settings.live.paper_start_cash
         positions = broker.get_positions()
-        equity = cash + sum(qty * prices.get(sym, 0.0) for sym, qty in positions.items())
+        equity = cash + sum(
+            qty * prices.get(sym, 0.0) for sym, qty in positions.items()
+        )
         current_weights = _positions_to_weights(positions, prices, max(equity, 1.0))
-        slices = router.reconcile_positions(latest_target, current_weights, prices, equity)
+        slices = router.reconcile_positions(
+            latest_target, current_weights, prices, equity
+        )
         tickets = router.build_orders(slices, equity)
         if tickets:
             broker.submit_orders(tickets)

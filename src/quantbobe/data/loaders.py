@@ -7,8 +7,8 @@ from typing import Iterable
 import pandas as pd
 
 from ..config.schema import Settings
-from .base import IDataProvider, SymbolMeta
 from .alpaca import AlpacaProvider
+from .base import IDataProvider, SymbolMeta
 from .local_csv import LocalCSVProvider
 from .yahoo import YahooProvider
 

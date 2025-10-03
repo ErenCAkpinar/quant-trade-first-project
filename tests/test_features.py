@@ -29,7 +29,12 @@ def build_prices():
 def test_cross_sectional_momentum_sector_neutral():
     prices = build_prices()
     sectors = {"AAA": "Tech", "AAB": "Tech", "ABA": "Health", "ABB": "Health"}
-    signals = cross_sectional_momentum(prices, sectors, lookback_months=3, skip_recent_month=False)
+    signals = cross_sectional_momentum(
+        prices,
+        sectors,
+        lookback_months=3,
+        skip_recent_month=False,
+    )
     latest = signals.groupby(level="date").tail(1)
     grouped = latest.groupby("sector")
     for _, group in grouped:

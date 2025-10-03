@@ -18,7 +18,12 @@ def test_dummy_broker_paper_trade_generates_expected_return():
 
     target_weights = pd.Series({"AAA": 0.5})
     current_weights = pd.Series({"AAA": 0.0})
-    slices = router.reconcile_positions(target_weights, current_weights, prices, starting_equity)
+    slices = router.reconcile_positions(
+        target_weights,
+        current_weights,
+        prices,
+        starting_equity,
+    )
     orders = router.build_orders(slices, starting_equity)
     for ticket in orders:
         trade_price = ticket.limit_price or prices[ticket.symbol]

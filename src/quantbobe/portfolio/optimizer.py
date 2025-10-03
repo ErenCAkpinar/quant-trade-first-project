@@ -6,7 +6,9 @@ import pandas as pd
 
 def shrink_covariance(returns: pd.DataFrame, shrinkage: float = 0.1) -> pd.DataFrame:
     sample = returns.cov()
-    diag = pd.DataFrame(np.diag(np.diag(sample.values)), index=sample.index, columns=sample.columns)
+    diag = pd.DataFrame(
+        np.diag(np.diag(sample.values)), index=sample.index, columns=sample.columns
+    )
     return (1 - shrinkage) * sample + shrinkage * diag
 
 

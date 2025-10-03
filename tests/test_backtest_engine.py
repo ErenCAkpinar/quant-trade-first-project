@@ -9,9 +9,17 @@ from quantbobe.config.schema import CostConfig
 
 def test_backtest_engine_executes_trades_and_applies_costs():
     dates = pd.date_range("2020-01-01", periods=5, freq="B")
-    records = []
+    records: list[dict[str, object]] = []
     for date in dates:
-        records.append({"date": date, "symbol": "AAA", "open": 100.0, "close": 102.0, "adj_close": 102.0})
+        records.append(
+            {
+                "date": date,
+                "symbol": "AAA",
+                "open": 100.0,
+                "close": 102.0,
+                "adj_close": 102.0,
+            }
+        )
     prices = pd.DataFrame(records).set_index(["date", "symbol"])
     cost = CostConfig(spread_bps=2, impact_k=0.9, borrow_bps_month=30)
     engine = BacktestEngine(cost)
@@ -26,7 +34,8 @@ def test_backtest_engine_executes_trades_and_applies_costs():
     open_price = prices.loc[(first_date, "AAA"), "open"]
     close_price = prices.loc[(first_date, "AAA"), "close"]
     participation = abs(target.loc[first_date, "AAA"])
-    expected_trade_price = open_price * (1 + engine.slippage.estimate_cost(participation))
+    slippage_cost = engine.slippage.estimate_cost(participation)
+    expected_trade_price = open_price * (1 + slippage_cost)
 
     assert first_trade.price == pytest.approx(expected_trade_price)
 

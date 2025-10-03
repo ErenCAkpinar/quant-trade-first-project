@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Dict, Iterable, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Iterable, Optional
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -11,6 +11,7 @@ try:  # pragma: no cover - optional dependency import
     from alpaca.trading.client import TradingClient
     from alpaca.trading.enums import OrderSide, TimeInForce
     from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest
+
     _ALPACA_PY_AVAILABLE = True
 except Exception:  # pragma: no cover - import fallback if package missing
     TradingClient = None
@@ -47,7 +48,9 @@ class AlpacaBroker:
         self._key_env = config.key_env if config else "ALPACA_API_KEY_ID"
         self._secret_env = config.secret_env if config else "ALPACA_API_SECRET_KEY"
         self._base_url = (
-            config.trading_base_url if config else os.getenv("ALPACA_PAPER_BASE_URL", "https://paper-api.alpaca.markets")
+            config.trading_base_url
+            if config
+            else os.getenv("ALPACA_PAPER_BASE_URL", "https://paper-api.alpaca.markets")
         )
         self._client, self._mode = self._init_client()
 
@@ -56,14 +59,18 @@ class AlpacaBroker:
         api_secret = os.getenv(self._secret_env)
         if not api_key or not api_secret:
             logger.warning(
-                "Alpaca credentials missing in environment (expected %s/%s); broker will run in dry mode.",
+                "Alpaca credentials missing in environment (expected %s/%s); "
+                "broker will run in dry mode.",
                 self._key_env,
                 self._secret_env,
             )
             return None, "none"
         if _ALPACA_PY_AVAILABLE and TradingClient is not None:
             try:
-                return TradingClient(api_key, api_secret, base_url=self._base_url), "alpaca_py"
+                return (
+                    TradingClient(api_key, api_secret, base_url=self._base_url),
+                    "alpaca_py",
+                )
             except Exception as exc:  # pragma: no cover - defensive guard
                 logger.exception("Failed to initialise Alpaca TradingClient: %s", exc)
         if tradeapi is not None:
@@ -71,7 +78,9 @@ class AlpacaBroker:
                 client = tradeapi.REST(api_key, api_secret, base_url=self._base_url)
                 return client, "trade_api"
             except Exception as exc:  # pragma: no cover - defensive guard
-                logger.exception("Failed to initialise alpaca-trade-api REST client: %s", exc)
+                logger.exception(
+                    "Failed to initialise alpaca-trade-api REST client: %s", exc
+                )
         logger.warning("No Alpaca client available; running in dry mode.")
         return None, "none"
 
@@ -114,11 +123,17 @@ class AlpacaBroker:
             side = order.side.lower()
             participation = min(qty / 1_000_000.0, 1.0)
             if participation > 0.05:
-                logger.warning("Participation %.4f too high for %s; skipping", participation, order.symbol)
+                logger.warning(
+                    "Participation %.4f too high for %s; skipping",
+                    participation,
+                    order.symbol,
+                )
                 continue
             try:
                 self._submit_order(order, qty, side)
-                logger.info("Submitted %s %s shares of %s", order.side, qty, order.symbol)
+                logger.info(
+                    "Submitted %s %s shares of %s", order.side, qty, order.symbol
+                )
             except Exception as exc:  # pragma: no cover - network/API errors
                 logger.exception("Failed to submit order for %s: %s", order.symbol, exc)
 
@@ -127,7 +142,12 @@ class AlpacaBroker:
         if self._mode == "alpaca_py":
             tif = TimeInForce.DAY
             if order_type == "market":
-                request = MarketOrderRequest(symbol=order.symbol, qty=qty, side=OrderSide(side.upper()), time_in_force=tif)
+                request = MarketOrderRequest(
+                    symbol=order.symbol,
+                    qty=qty,
+                    side=OrderSide(side.upper()),
+                    time_in_force=tif,
+                )
             elif order_type == "limit":
                 if order.limit_price is None:
                     raise ValueError("Limit price required for limit orders")

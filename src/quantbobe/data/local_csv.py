@@ -29,7 +29,9 @@ class LocalCSVProvider(IDataProvider):
             return parquet_path
         raise FileNotFoundError(f"Bars file missing for {symbol}")
 
-    def get_daily_bars(self, symbols: Iterable[str], start: datetime, end: datetime) -> pd.DataFrame:
+    def get_daily_bars(
+        self, symbols: Iterable[str], start: datetime, end: datetime
+    ) -> pd.DataFrame:
         frames: list[pd.DataFrame] = []
         for symbol in symbols:
             path = self._bars_path(symbol)
@@ -64,7 +66,9 @@ class LocalCSVProvider(IDataProvider):
         df.set_index(["date", "symbol"], inplace=True)
         return df.sort_index()
 
-    def get_intraday_bars(self, symbols: Iterable[str], start: datetime, end: datetime) -> pd.DataFrame:
+    def get_intraday_bars(
+        self, symbols: Iterable[str], start: datetime, end: datetime
+    ) -> pd.DataFrame:
         path = self.root / "intraday.parquet"
         if not path.exists():
             return pd.DataFrame()
@@ -76,4 +80,7 @@ class LocalCSVProvider(IDataProvider):
 
     def get_symbol_meta(self) -> list[SymbolMeta]:
         df = pd.read_csv(self.universe_file)
-        return [SymbolMeta(symbol=row.symbol, sector=getattr(row, "sector", None)) for row in df.itertuples()]
+        return [
+            SymbolMeta(symbol=row.symbol, sector=getattr(row, "sector", None))
+            for row in df.itertuples()
+        ]

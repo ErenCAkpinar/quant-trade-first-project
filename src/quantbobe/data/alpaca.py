@@ -4,12 +4,15 @@ import os
 from datetime import datetime, timezone
 from functools import cached_property
 from pathlib import Path
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
 import pandas as pd
 
 from ..config.schema import Settings
 from .base import IDataProvider, SymbolMeta
+
+if TYPE_CHECKING:  # pragma: no cover - typing aid only
+    from alpaca.data.timeframe import TimeFrame
 
 _ALPACA_PY_AVAILABLE = False
 _ALPACA_PY_IMPORT_ERROR: str | None = None
@@ -18,6 +21,7 @@ _TRADE_API_IMPORT_ERROR: str | None = None
 
 try:  # pragma: no cover - optional dependency
     import alpaca_trade_api as tradeapi
+
     _TRADE_API_AVAILABLE = True
 except Exception as exc:  # pragma: no cover - optional dependency
     tradeapi = None
@@ -50,10 +54,12 @@ class AlpacaProvider(IDataProvider):
         key = os.getenv(self.alpaca_config.key_env)
         secret = os.getenv(self.alpaca_config.secret_env)
         if not key or not secret:
-            raise EnvironmentError(
+            message = (
                 "Alpaca credentials not found in environment. "
-                f"Ensure {self.alpaca_config.key_env} and {self.alpaca_config.secret_env} are set."
+                f"Ensure {self.alpaca_config.key_env} and "
+                f"{self.alpaca_config.secret_env} are set."
             )
+            raise EnvironmentError(message)
         self._alpaca_py_modules = None
         self._mode = "none"
         self.client = self._try_init_alpaca_py(key, secret)
@@ -126,12 +132,15 @@ class AlpacaProvider(IDataProvider):
         elif universe_path.exists():
             df = pd.read_csv(universe_path)
             if "symbol" not in df.columns:
-                raise ValueError(f"Universe file {universe_path} missing 'symbol' column")
+                raise ValueError(
+                    f"Universe file {universe_path} missing 'symbol' column"
+                )
             symbols = df["symbol"].astype(str).tolist()
             sectors = df.set_index("symbol").to_dict().get("sector", {})
         else:
             raise FileNotFoundError(
-                "Equities universe file not found and no explicit symbols provided for Alpaca provider"
+                "Equities universe file not found and no explicit symbols provided "
+                "for Alpaca provider"
             )
         meta = []
         for symbol in symbols:
@@ -155,7 +164,9 @@ class AlpacaProvider(IDataProvider):
         TimeFrameUnit = modules["TimeFrameUnit"]
         return _TIMEFRAME_MAP[tf](TimeFrame, TimeFrameUnit)
 
-    def get_daily_bars(self, symbols: Iterable[str], start: datetime, end: datetime) -> pd.DataFrame:
+    def get_daily_bars(
+        self, symbols: Iterable[str], start: datetime, end: datetime
+    ) -> pd.DataFrame:
         symbols = list(symbols) or self.symbols
         if not symbols:
             return pd.DataFrame()
@@ -223,12 +234,16 @@ class AlpacaProvider(IDataProvider):
         # Alpaca fundamentals require separate subscriptions; stubbed as empty for now.
         return pd.DataFrame()
 
-    def get_intraday_bars(self, symbols: Iterable[str], start: datetime, end: datetime) -> pd.DataFrame:
+    def get_intraday_bars(
+        self, symbols: Iterable[str], start: datetime, end: datetime
+    ) -> pd.DataFrame:
         # TODO: Implement intraday fetch via Alpaca if needed.
         return pd.DataFrame()
 
     def get_symbol_meta(self) -> list[SymbolMeta]:
         return self._meta
+
+
 def _ensure_urllib3_six_moves() -> None:
     """Ensure urllib3's vendored six module exposes moves for Python 3.12."""
     import sys
@@ -268,17 +283,20 @@ def _ensure_urllib3_six_moves() -> None:
     # Explicitly register common modules required by urllib3.
     try:
         import http.client as http_client
+
         sys.modules.setdefault("urllib3.packages.six.moves.http_client", http_client)
     except Exception:
         pass
     try:
         import urllib.parse as urllib_parse
+
         sys.modules.setdefault("urllib3.packages.six.moves.urllib", module.urllib)  # type: ignore[attr-defined]
         sys.modules.setdefault("urllib3.packages.six.moves.urllib.parse", urllib_parse)
     except Exception:
         pass
     try:
         import queue as queue_mod
+
         sys.modules.setdefault("urllib3.packages.six.moves.queue", queue_mod)
     except Exception:
         pass
