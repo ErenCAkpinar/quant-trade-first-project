@@ -1,0 +1,62 @@
+project:
+  seed: 42
+  timezone: "America/New_York"
+data:
+  provider: "local_csv"
+  path: "data/local"
+  equities_universe: "universe.csv"
+  start: "2025-06-02"
+  end: null
+  timeframe: "1Day"
+  symbols: null
+costs:
+  spread_bps: 2
+  impact_k: 0.9
+  borrow_bps_month: 30
+portfolio:
+  target_vol_ann: 0.10
+  max_name_weight: 0.02
+  beta_neutral: true
+  sector_neutral: true
+sleeves:
+  A_tsmom: { enabled: false }
+  B_carry: { enabled: false }
+  C_xsec_qv:
+    enabled: true
+    rebalance: "M"
+    risk_budget: 0.85
+    params:
+      lookback_mom_months: 3
+      skip_recent_month: false
+      qv_fields: ["ROA","GrossMargin","Accruals","EP"]
+      top_quantile: 0.5
+      bottom_quantile: 0.5
+  D_intraday_rev:
+    enabled: true
+    rebalance: "D"
+    risk_budget: 0.15
+    params:
+      z_entry: 1.5
+      exit: "next_open"
+      earnings_blackout_days: 2
+      min_dollar_vol: 5000000
+regimes:
+  breadth_thresholds: { risk_off: 0.45, risk_on: 0.60 }
+  corr_window_days: 60
+  vix_curve_source: "csv"
+governance:
+  dd_cut: 0.12
+  loss_sigma_cut: 3.0
+reports:
+  html: "reports/equities_bobe.html"
+  trades_csv: "reports/trades.csv"
+live:
+  broker: "alpaca"
+  poll_interval_sec: 60
+  paper_start_cash: 100000.0
+alpaca:
+  trading_base_url: "https://paper-api.alpaca.markets"
+  data_base_url: "https://data.alpaca.markets"
+  key_env: "ALPACA_API_KEY_ID"
+  secret_env: "ALPACA_API_SECRET_KEY"
+  data_feed: "iex"

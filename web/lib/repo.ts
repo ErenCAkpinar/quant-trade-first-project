@@ -2,6 +2,9 @@ import path from "path";
 import { promises as fs } from "fs";
 import YAML from "yaml";
 
+import { fetchAlpacaSnapshot } from "@/lib/server/alpaca";
+import { latestLivePnl, readLivePnl as readLivePnlCsv } from "@/lib/server/live-pnl";
+
 const REPO_ROOT = path.resolve(process.cwd(), "..");
 
 function resolveRepoPath(...segments: string[]) {
@@ -53,35 +56,6 @@ export async function readTradesCsv(file = "reports/trades.csv"): Promise<TradeL
   }
 }
 
-export interface PnlPoint {
-  timestamp: string;
-  equity: number;
-  cash: number;
-}
-
-export async function readLivePnlCsv(file = "reports/live_pnl.csv"): Promise<PnlPoint[]> {
-  try {
-    const raw = await fs.readFile(resolveRepoPath(file), "utf8");
-    const [headerLine, ...rows] = raw.trim().split(/\r?\n/);
-    const headers = headerLine.split(",");
-    return rows.map((row) => {
-      const values = row.split(",");
-      const record: Record<string, string> = {};
-      headers.forEach((key, idx) => {
-        record[key] = values[idx] ?? "";
-      });
-      return {
-        timestamp: record.timestamp,
-        equity: Number(record.equity),
-        cash: Number(record.cash)
-      };
-    });
-  } catch (error) {
-    console.warn("Live PnL CSV unavailable", error);
-    return [];
-  }
-}
-
 export async function readReadme(file = "README.md") {
   try {
     return await fs.readFile(resolveRepoPath(file), "utf8");
@@ -94,14 +68,17 @@ export async function readReadme(file = "README.md") {
 export async function readSummary() {
   const config = await readYamlConfig();
   const trades = await readTradesCsv();
-  const pnl = await readLivePnlCsv();
-  const latestPnl = pnl[pnl.length - 1];
+  const alpaca = await fetchAlpacaSnapshot();
+  const latestPnl = await latestLivePnl();
   const recentTrades = trades.slice(-5).reverse();
 
   return {
     config,
-    pnl: latestPnl ?? null,
+    pnl: latestPnl,
+    alpaca,
     tradeCount: trades.length,
     recentTrades
   };
 }
+
+export { readLivePnlCsv };

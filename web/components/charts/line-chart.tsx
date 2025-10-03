@@ -43,7 +43,7 @@ export function LineChart({ data, title, yLabel }: LineChartProps) {
         color: "#cbd5f5",
         showgrid: true,
         gridcolor: "rgba(255,255,255,0.05)",
-        title: yLabel
+        title: yLabel ? { text: yLabel } : undefined
       },
       font: { color: "#e5e7ff" },
       responsive: true,

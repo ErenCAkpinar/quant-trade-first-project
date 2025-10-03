@@ -8,6 +8,9 @@ const LINKS = [
   { href: "/", label: "Home" },
   { href: "/strategy", label: "Strategy" },
   { href: "/performance", label: "Performance" },
+  { href: "/trading", label: "Trading" },
+  { href: "/paper-trading", label: "Paper" },
+  { href: "/live-trading", label: "Live" },
   { href: "/docs", label: "Docs" },
   { href: "/status", label: "Status" }
 ];
