@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_HALF_UP
 from typing import TYPE_CHECKING, Dict, Iterable, Optional
 
 from dotenv import load_dotenv
@@ -67,10 +68,28 @@ class AlpacaBroker:
             return None, "none"
         if _ALPACA_PY_AVAILABLE and TradingClient is not None:
             try:
-                return (
-                    TradingClient(api_key, api_secret, base_url=self._base_url),
-                    "alpaca_py",
-                )
+                import inspect
+
+                paper_mode = "paper" in self._base_url.lower()
+                params = inspect.signature(TradingClient.__init__).parameters
+                call_args: list[str] = []
+                call_kwargs: Dict[str, object] = {}
+                if "api_key" in params:
+                    call_kwargs["api_key"] = api_key
+                    if "secret_key" in params:
+                        call_kwargs["secret_key"] = api_secret
+                    else:
+                        call_args.append(api_secret)
+                else:
+                    call_args.extend([api_key, api_secret])
+                if "paper" in params:
+                    call_kwargs["paper"] = paper_mode
+                if "url_override" in params:
+                    call_kwargs["url_override"] = self._base_url
+                elif "base_url" in params:
+                    call_kwargs["base_url"] = self._base_url
+                client = TradingClient(*call_args, **call_kwargs)
+                return client, "alpaca_py"
             except Exception as exc:  # pragma: no cover - defensive guard
                 logger.exception("Failed to initialise Alpaca TradingClient: %s", exc)
         if tradeapi is not None:
@@ -145,17 +164,22 @@ class AlpacaBroker:
                 request = MarketOrderRequest(
                     symbol=order.symbol,
                     qty=qty,
-                    side=OrderSide(side.upper()),
+                    side=OrderSide(side),
                     time_in_force=tif,
                 )
             elif order_type == "limit":
                 if order.limit_price is None:
                     raise ValueError("Limit price required for limit orders")
+                price = (
+                    Decimal(str(order.limit_price))
+                    .quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    .normalize()
+                )
                 request = LimitOrderRequest(
                     symbol=order.symbol,
                     qty=qty,
-                    side=OrderSide(side.upper()),
-                    limit_price=float(order.limit_price),
+                    side=OrderSide(side),
+                    limit_price=float(price),
                     time_in_force=tif,
                 )
             else:
@@ -172,7 +196,11 @@ class AlpacaBroker:
             if order_type == "limit":
                 if order.limit_price is None:
                     raise ValueError("Limit price required for limit orders")
-                params["limit_price"] = float(order.limit_price)
+                params["limit_price"] = float(
+                    Decimal(str(order.limit_price)).quantize(
+                        Decimal("0.01"), rounding=ROUND_HALF_UP
+                    )
+                )
             self._client.submit_order(**params)
         else:
             raise RuntimeError("No Alpaca client configured")

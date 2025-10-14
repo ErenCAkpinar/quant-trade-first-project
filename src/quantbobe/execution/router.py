@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Iterable, List
+import math
 
 import pandas as pd
 
@@ -31,12 +32,22 @@ class ExecutionRouter:
                 continue
             side = "buy" if notional > 0 else "sell"
             base_qty = abs(notional) / max(slc.price, 1e-4)
+            if side == "sell":
+                current_qty = max(equity * slc.current / max(slc.price, 1e-4), 0.0)
+                closing_qty = min(base_qty, current_qty)
+                short_qty = max(base_qty - closing_qty, 0.0)
+                short_whole = math.floor(short_qty + 1e-9)
+                qty = closing_qty + short_whole
+                if qty <= 1e-6:
+                    continue
+            else:
+                qty = base_qty
             participation = min(abs(base_qty) / 1_000_000, 1.0)
             cost = self.slippage.estimate_cost(participation)
             limit_price = slc.price * (1 + cost if side == "buy" else 1 - cost)
             ticket = OrderTicket(
                 symbol=slc.symbol,
-                qty=base_qty,
+                qty=qty,
                 side=side,
                 type="limit",
                 limit_price=limit_price,
