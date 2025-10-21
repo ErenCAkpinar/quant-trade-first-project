@@ -6,13 +6,13 @@ Your system is now ready! Here's how to set up live paper trading:
 
 ### 1. Create Environment File
 
-Create a `.env` file in the project root:
+Start from the template:
 
 ```bash
-touch .env
+cp .env.example .env
 ```
 
-Add your Alpaca credentials to `.env`:
+Update the placeholders with your Alpaca credentials:
 
 ```env
 # Alpaca API Credentials (Paper Trading)

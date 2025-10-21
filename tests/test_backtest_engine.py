@@ -41,7 +41,10 @@ def test_backtest_engine_executes_trades_and_applies_costs():
 
     execution_cost = first_trade.quantity * (first_trade.price - open_price)
     mark_to_market = first_trade.quantity * (close_price - open_price)
-    expected_equity = initial_equity + mark_to_market - execution_cost
+    extra_cost = abs(first_trade.notional) * (
+        (cost.commission_bps + cost.timing_slippage_bps) / 10000.0
+    )
+    expected_equity = initial_equity + mark_to_market - execution_cost - extra_cost
 
     assert execution_cost > 0
     assert result.equity_curve.iloc[0] == pytest.approx(expected_equity)

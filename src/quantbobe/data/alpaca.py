@@ -1,31 +1,30 @@
 from __future__ import annotations
 
 import os
+import warnings
 from datetime import datetime, timezone
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable
 
 import pandas as pd
+from dotenv import load_dotenv
 
 from ..config.schema import Settings
 from .base import IDataProvider, SymbolMeta
+
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    message="websockets\\.legacy is deprecated",
+    module="websockets.legacy",
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing aid only
     from alpaca.data.timeframe import TimeFrame
 
 _ALPACA_PY_AVAILABLE = False
 _ALPACA_PY_IMPORT_ERROR: str | None = None
-_TRADE_API_AVAILABLE = False
-_TRADE_API_IMPORT_ERROR: str | None = None
-
-try:  # pragma: no cover - optional dependency
-    import alpaca_trade_api as tradeapi
-
-    _TRADE_API_AVAILABLE = True
-except Exception as exc:  # pragma: no cover - optional dependency
-    tradeapi = None
-    _TRADE_API_IMPORT_ERROR = str(exc)
 
 
 _TIMEFRAME_MAP = {
@@ -48,6 +47,7 @@ class AlpacaProvider(IDataProvider):
     """Market data provider backed by Alpaca Market Data API."""
 
     def __init__(self, settings: Settings) -> None:
+        load_dotenv()
         self.settings = settings
         self.data_config = settings.data
         self.alpaca_config = settings.alpaca
@@ -61,15 +61,11 @@ class AlpacaProvider(IDataProvider):
             )
             raise EnvironmentError(message)
         self._alpaca_py_modules = None
-        self._mode = "none"
         self.client = self._try_init_alpaca_py(key, secret)
         if self.client is None:
-            self.client = self._try_init_trade_api(key, secret)
-        if self.client is None:
             raise ImportError(
-                "Alpaca provider requires alpaca-py or alpaca-trade-api. "
-                f"alpaca-py import error: {_ALPACA_PY_IMPORT_ERROR}; "
-                f"alpaca-trade-api import error: {_TRADE_API_IMPORT_ERROR}"
+                "Alpaca provider requires the alpaca-py package. "
+                f"alpaca-py import error: {_ALPACA_PY_IMPORT_ERROR}"
             )
         self._meta = self._load_symbol_meta()
 
@@ -94,32 +90,11 @@ class AlpacaProvider(IDataProvider):
                 "TimeFrame": TimeFrame,
                 "TimeFrameUnit": TimeFrameUnit,
             }
-            self._mode = "alpaca_py"
             _ALPACA_PY_AVAILABLE = True
             _ALPACA_PY_IMPORT_ERROR = None
             return client
         except Exception as exc:  # pragma: no cover - defensive guard
             _ALPACA_PY_IMPORT_ERROR = str(exc)
-            return None
-
-    def _try_init_trade_api(self, key: str, secret: str):
-        global _TRADE_API_AVAILABLE, _TRADE_API_IMPORT_ERROR
-        if tradeapi is None:
-            return None
-        _ensure_urllib3_six_moves()
-        try:
-            client = tradeapi.REST(
-                key,
-                secret,
-                base_url=self.alpaca_config.trading_base_url,
-                data_base_url=self.alpaca_config.data_base_url,
-            )
-            self._mode = "trade_api"
-            _TRADE_API_AVAILABLE = True
-            _TRADE_API_IMPORT_ERROR = None
-            return client
-        except Exception as exc:  # pragma: no cover - defensive guard
-            _TRADE_API_IMPORT_ERROR = str(exc)
             return None
 
     def _load_symbol_meta(self) -> list[SymbolMeta]:
@@ -153,8 +128,6 @@ class AlpacaProvider(IDataProvider):
 
     def _resolve_timeframe(self) -> TimeFrame:
         tf = self.data_config.timeframe or "1Day"
-        if self._mode == "trade_api":
-            return self.data_config.timeframe or "1Day"
         modules = self._alpaca_py_modules
         if not modules:
             raise ImportError("alpaca-py is required to resolve Alpaca timeframes")
@@ -172,42 +145,26 @@ class AlpacaProvider(IDataProvider):
             return pd.DataFrame()
         start_utc = _ensure_utc(start)
         end_utc = _ensure_utc(end)
-        if self._mode == "alpaca_py":
-            timeframe = self._resolve_timeframe()
-            modules = self._alpaca_py_modules or {}
-            StockBarsRequest = modules.get("StockBarsRequest")
-            if StockBarsRequest is None:
-                raise ImportError("alpaca-py components unavailable to request bars")
-            request = StockBarsRequest(
-                symbol_or_symbols=symbols,
-                timeframe=timeframe,
-                start=start_utc,
-                end=end_utc,
-                feed=self.alpaca_config.data_feed,
-                adjustment="raw",
-                limit=None,
-            )
-            response = self.client.get_stock_bars(request)
-            df = response.df
-            if df.empty:
-                return pd.DataFrame()
-            frame = df.reset_index().rename(columns={"timestamp": "date"})
-            frame["date"] = pd.to_datetime(frame["date"], utc=True).dt.tz_convert(None)
-        else:
-            timeframe = self._resolve_timeframe()
-            bars = self.client.get_bars(
-                symbols,
-                timeframe,
-                start=start_utc.isoformat(),
-                end=end_utc.isoformat(),
-                adjustment="raw",
-                feed=self.alpaca_config.data_feed,
-            )
-            df = bars.df
-            if df.empty:
-                return pd.DataFrame()
-            frame = df.reset_index().rename(columns={"timestamp": "date"})
-            frame["date"] = pd.to_datetime(frame["date"], utc=True).dt.tz_convert(None)
+        timeframe = self._resolve_timeframe()
+        modules = self._alpaca_py_modules or {}
+        StockBarsRequest = modules.get("StockBarsRequest")
+        if StockBarsRequest is None:
+            raise ImportError("alpaca-py components unavailable to request bars")
+        request = StockBarsRequest(
+            symbol_or_symbols=symbols,
+            timeframe=timeframe,
+            start=start_utc,
+            end=end_utc,
+            feed=self.alpaca_config.data_feed,
+            adjustment="raw",
+            limit=None,
+        )
+        response = self.client.get_stock_bars(request)
+        df = response.df
+        if df.empty:
+            return pd.DataFrame()
+        frame = df.reset_index().rename(columns={"timestamp": "date"})
+        frame["date"] = pd.to_datetime(frame["date"], utc=True).dt.tz_convert(None)
         frame.rename(
             columns={
                 "open": "open",

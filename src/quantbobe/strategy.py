@@ -11,10 +11,12 @@ from .config.loader import load_settings
 from .config.schema import Settings
 from .data import IDataProvider, build_provider, load_daily_history, load_fundamentals
 from .data.base import SymbolMeta
-from .features.momentum import cross_sectional_momentum
+from .features.mean_reversion import MeanReversionConfig, MeanReversionSignals
+from .features.momentum_multi import MomentumConfig, MultiTimeframeMomentum
 from .features.quality_value import compute_quality_value
-from .features.regimes import trend_breadth
+from .features.regimes import RegimeDetector
 from .features.risk import scale_to_target
+from .portfolio.costs import TransactionCostModel
 from .portfolio.sizing import apply_constraints, inverse_vol_weights
 
 
@@ -63,137 +65,125 @@ def compute_sleeve_weights(ctx: StrategyContext) -> Dict[str, pd.DataFrame]:
         if "adj_close" in data.columns
         else data["close"].unstack("symbol")
     )
-    returns = closes.pct_change().dropna()
+    returns = closes.pct_change(fill_method=None)
+    returns = returns.replace([np.inf, -np.inf], np.nan).dropna(how="all")
 
-    breadth = trend_breadth(data)
-    last_breadth = (
-        float(breadth.dropna().iloc[-1]) if not breadth.dropna().empty else 0.5
+    detector = RegimeDetector(
+        breadth_window=settings.regimes.breadth_window_days,
+        vol_window=settings.regimes.vol_window_days,
+        corr_window=settings.regimes.corr_window_days,
+        dispersion_window=settings.regimes.dispersion_window_days,
     )
-    risk_off = settings.regimes.breadth_thresholds.get("risk_off", 0.45)
-    risk_on = settings.regimes.breadth_thresholds.get("risk_on", 0.6)
-    regime_scale_c = 1.0
-    regime_scale_d = 1.0
-    if last_breadth <= risk_off:
-        regime_scale_c = 0.7
-        regime_scale_d = 0.5
-    elif last_breadth >= risk_on:
-        regime_scale_c = 1.0
-        regime_scale_d = 1.0
+    regime_frame = detector.evaluate(data)
+    if regime_frame.empty:
+        momentum_scale_series = pd.Series(1.0, index=closes.index)
+        mean_rev_scale_series = pd.Series(1.0, index=closes.index)
     else:
-        alpha = (last_breadth - risk_off) / max(risk_on - risk_off, 1e-6)
-        regime_scale_c = 0.7 + 0.3 * alpha
-        regime_scale_d = 0.5 + 0.5 * alpha
+        regime_frame = regime_frame.reindex(closes.index).ffill()
+        momentum_scale_series = regime_frame["momentum_scale"].fillna(1.0)
+        mean_rev_scale_series = regime_frame["mean_reversion_scale"].fillna(1.0)
+    regime_scale_c = float(momentum_scale_series.iloc[-1]) if not momentum_scale_series.empty else 1.0
+    regime_scale_d = float(mean_rev_scale_series.iloc[-1]) if not mean_rev_scale_series.empty else 1.0
 
     sleeve_weights: dict[str, pd.DataFrame] = {}
 
     sleeves = settings.sleeves
     if sleeves.C_xsec_qv.enabled:
-        lookback = (
-            sleeves.C_xsec_qv.params.lookback_mom_months
-            if sleeves.C_xsec_qv.params
-            else 12
+        params = sleeves.C_xsec_qv.params
+        if params and params.lookback_mom_months:
+            timeframes = [(params.lookback_mom_months, 1.0)]
+        else:
+            timeframes = [(3, 0.25), (6, 0.35), (12, 0.40)]
+        momentum_config = MomentumConfig(
+            timeframes=timeframes,
+            skip_recent_month=params.skip_recent_month if params else True,
         )
-        skip_recent = (
-            sleeves.C_xsec_qv.params.skip_recent_month
-            if sleeves.C_xsec_qv.params
-            else True
-        )
-        momentum = cross_sectional_momentum(data, sectors, lookback or 12, skip_recent)
-        if not momentum.empty:
+        momentum_model = MultiTimeframeMomentum(momentum_config)
+        mom_scores = momentum_model.compute_combined_momentum(closes)
+        if not mom_scores.empty:
             qv = compute_quality_value(
                 ctx.fundamentals,
-                fields=(
-                    sleeves.C_xsec_qv.params.qv_fields
-                    if sleeves.C_xsec_qv.params
-                    else None
-                ),
+                fields=params.qv_fields if params and params.qv_fields else None,
             )
-            if qv.empty or "qv_score" not in qv.columns:
-                qv = momentum.copy()[[]]
-                qv["qv_score"] = 0.0
-            # align indexes
-            idx = momentum.index.union(qv.index, sort=False)
-            momentum = momentum.reindex(idx).fillna(0)
-            qv = qv.reindex(idx).fillna(0)
-            combined = momentum.join(qv, how="left")
-            if "weight_hint" in combined.columns:
-                combined["combined_score"] = combined[["weight_hint", "qv_score"]].sum(
-                    axis=1
+            if not qv.empty and "qv_score" in qv.columns:
+                qv_wide = (
+                    qv["qv_score"]
+                    .unstack("symbol")
+                    .reindex(mom_scores.index)
+                    .ffill()
+                    .fillna(0.0)
                 )
-                frame = combined[["combined_score"]].reset_index()
-                # Ensure date column is datetime, handling timezone-aware datetimes
-                frame["date"] = pd.to_datetime(frame["date"], utc=True).dt.tz_localize(
-                    None
+                qv_ranks = qv_wide.rank(axis=1, pct=True, method="average").fillna(0.5)
+            else:
+                qv_ranks = pd.DataFrame(
+                    0.5, index=mom_scores.index, columns=mom_scores.columns
                 )
-                frame["month"] = frame["date"].dt.to_period("M")
-                target_rows: list[pd.Series] = []
-                top_q = (
-                    sleeves.C_xsec_qv.params.top_quantile
-                    if sleeves.C_xsec_qv.params
-                    else 0.2
-                )
-                bottom_q = (
-                    sleeves.C_xsec_qv.params.bottom_quantile
-                    if sleeves.C_xsec_qv.params
-                    else 0.2
-                )
-                risk_budget = (sleeves.C_xsec_qv.risk_budget or 0.85) * regime_scale_c
-                for _period, group in frame.groupby("month"):
-                    latest_date = group["date"].max()
-                    snapshot = group[group["date"] == latest_date]
-                    scores = snapshot.set_index("symbol")["combined_score"].sort_values(
-                        ascending=False
+            blended_scores = (
+                0.65 * mom_scores.reindex_like(qv_ranks).fillna(0.5)
+                + 0.35 * qv_ranks.reindex_like(mom_scores).fillna(0.5)
+            )
+            top_q = params.top_quantile if params and params.top_quantile else 0.2
+            bottom_q = (
+                params.bottom_quantile if params and params.bottom_quantile else 0.2
+            )
+            rebal_freq = sleeves.C_xsec_qv.rebalance or "M"
+
+            weights_df = momentum_model.generate_long_short_portfolio(
+                closes,
+                sectors,
+                top_quantile=top_q,
+                bottom_quantile=bottom_q,
+                sector_neutral=settings.portfolio.sector_neutral,
+                rebal_freq=rebal_freq,
+                scores=blended_scores,
+            )
+            if not weights_df.empty:
+                betas = {symbol: 1.0 for symbol in weights_df.columns}
+                rows: list[pd.Series] = []
+                base_budget = sleeves.C_xsec_qv.risk_budget or 0.85
+                for date, row in weights_df.iterrows():
+                    hist_returns = returns.loc[:date].tail(60)
+                    budget = base_budget * float(
+                        momentum_scale_series.reindex([date]).fillna(regime_scale_c).iloc[0]
                     )
-                    if scores.empty:
-                        continue
-                    n = len(scores)
-                    top_n = max(1, int(n * top_q))
-                    bottom_n = max(1, int(n * bottom_q))
-                    longs = scores.head(top_n)
-                    shorts = scores.tail(bottom_n)
-                    long_weights = (
-                        longs / longs.abs().sum() if longs.abs().sum() != 0 else longs
+                    if hist_returns.empty or budget == 0:
+                        scaled = pd.Series(0.0, index=row.index)
+                    else:
+                        inv_vol = inverse_vol_weights(hist_returns, budget)
+                        scaled = row * inv_vol.reindex(row.index).fillna(0.0)
+                    constrained = apply_constraints(
+                        scaled,
+                        sectors,
+                        betas,
+                        settings.portfolio.max_name_weight,
+                        0.05,
+                        settings.portfolio.sector_neutral,
                     )
-                    short_weights = (
-                        -shorts / shorts.abs().sum()
-                        if shorts.abs().sum() != 0
-                        else shorts
-                    )
-                    target = pd.concat([long_weights, short_weights])
-                    target = target.reindex(closes.columns).fillna(0.0)
-                    returns_window = returns.loc[:latest_date].tail(60)
-                    inv_vol = inverse_vol_weights(returns_window, risk_budget)
-                    target = target * inv_vol.reindex(target.index).fillna(0)
-                    target_rows.append(pd.Series(target, name=latest_date))
-                if target_rows:
-                    weights_df = pd.DataFrame(target_rows).sort_index()
-                    betas = {symbol: 1.0 for symbol in weights_df.columns}
-                    constrained = weights_df.apply(
-                        lambda row: apply_constraints(
-                            row,
-                            sectors,
-                            betas,
-                            settings.portfolio.max_name_weight,
-                            0.05,
-                            settings.portfolio.sector_neutral,
-                        ),
-                        axis=1,
-                    )
-                    sleeve_weights["C_xsec_qv"] = constrained
+                    rows.append(pd.Series(constrained, name=date))
+                if rows:
+                    sleeve_weights["C_xsec_qv"] = pd.DataFrame(rows).sort_index()
 
     if sleeves.D_intraday_rev.enabled:
-        risk_budget = (sleeves.D_intraday_rev.risk_budget or 0.15) * regime_scale_d
-        tilts = returns.tail(1)
-        if not tilts.empty:
-            rev = -tilts.iloc[0]
-            vol = returns.rolling(10).std(ddof=0).tail(1).iloc[0]
-            rev = rev / vol.replace(0, np.nan)
-            rev = rev.replace([np.inf, -np.inf], 0).fillna(0)
-            rev = rev.clip(-1.0, 1.0)
-            rev = rev * risk_budget / rev.abs().sum() if rev.abs().sum() != 0 else rev
-            sleeve_weights["D_intraday_rev"] = pd.DataFrame(
-                [rev], index=[tilts.index[-1]]
-            )
+        params = sleeves.D_intraday_rev.params
+        rev_config = MeanReversionConfig(
+            lookback_window=20,
+            z_score_threshold=params.z_entry if params and params.z_entry else 2.0,
+        )
+        mean_rev_model = MeanReversionSignals(rev_config)
+        regime_filter = mean_rev_scale_series.reindex(closes.index).ffill().fillna(
+            regime_scale_d
+        )
+        signals = mean_rev_model.generate_signals(data, regime_filter=regime_filter)
+        if not signals.empty:
+            latest_date = signals.index[-1]
+            latest = signals.loc[latest_date].copy()
+            budget = (sleeves.D_intraday_rev.risk_budget or 0.15) * regime_scale_d
+            total = latest.abs().sum()
+            if total > 0 and budget > 0:
+                latest = latest * (budget / total)
+            else:
+                latest = latest * 0
+            sleeve_weights["D_intraday_rev"] = pd.DataFrame([latest], index=[latest_date])
 
     if not sleeve_weights:
         raise ValueError(
@@ -211,7 +201,8 @@ def aggregate_target_weights(
         if "adj_close" in ctx.daily.columns
         else ctx.daily["close"].unstack("symbol")
     )
-    returns = closes.pct_change().dropna()
+    returns = closes.pct_change(fill_method=None)
+    returns = returns.replace([np.inf, -np.inf], np.nan).dropna(how="all")
     aligned = []
     for df in sleeve_weights.values():
         df = df.reindex(returns.index).ffill().fillna(0)
@@ -219,4 +210,29 @@ def aggregate_target_weights(
     target = sum(aligned)
     target = target.reindex(returns.index).fillna(0.0)
     target = scale_to_target(target, returns, ctx.settings.portfolio.target_vol_ann)
-    return target
+    cost_model = TransactionCostModel(ctx.settings.costs)
+    if "volume" in ctx.daily.columns:
+        volume = ctx.daily["volume"].unstack("symbol")
+        dollar_volume = (
+            closes.reindex(volume.index)
+            .mul(volume, fill_value=0.0)
+            .rolling(60, min_periods=20)
+            .mean()
+        )
+        adv = dollar_volume.reindex(target.index).ffill().fillna(0.0)
+    else:
+        adv = pd.DataFrame(0.0, index=target.index, columns=target.columns)
+    adjusted = target.copy()
+    current = pd.Series(0.0, index=target.columns)
+    for date in target.index:
+        adv_row = adv.loc[date] if date in adv.index else pd.Series(0.0, index=target.columns)
+        desired = target.loc[date]
+        optimized = cost_model.optimize_rebalance_threshold(
+            desired,
+            current,
+            adv_row,
+            portfolio_value=1_000_000.0,
+        )
+        adjusted.loc[date] = optimized
+        current = optimized
+    return adjusted

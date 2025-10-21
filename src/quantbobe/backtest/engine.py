@@ -32,6 +32,8 @@ class BacktestEngine:
     def __init__(self, costs: CostConfig) -> None:
         self.costs = costs
         self.slippage = SlippageModel(costs.spread_bps, costs.impact_k)
+        self.commission_bps = getattr(costs, "commission_bps", 0.5)
+        self.timing_slippage_bps = getattr(costs, "timing_slippage_bps", 1.0)
 
     def run(
         self,
@@ -75,6 +77,11 @@ class BacktestEngine:
                 qty = notional / max(trade_price, 1e-6)
                 current_pos[symbol] += qty
                 cash.iloc[i] -= qty * trade_price
+                trade_notional = abs(qty * trade_price)
+                extra_cost = trade_notional * (
+                    (self.commission_bps + self.timing_slippage_bps) / 10000.0
+                )
+                cash.iloc[i] -= extra_cost
                 trades.append(
                     Trade(
                         date=date,

@@ -20,11 +20,15 @@ ENV/
 .idea/
 .vscode/
 *.swp
+.DS_Store
+*/.DS_Store
 
 # Data & reports
-reports/*.html
-reports/*.csv
-reports/live_pnl.csv
+data/local/
+reports/**
+!reports/README.md
+!reports/.gitkeep
+!reports/sample-report.png
 
 # Jupyter
 .ipynb_checkpoints/

@@ -50,10 +50,19 @@ governance:
 reports:
   html: "reports/equities_bobe.html"
   trades_csv: "reports/trades.csv"
+  runs_dir: "reports/runs"
 live:
   broker: "alpaca"
   poll_interval_sec: 60
   paper_start_cash: 100000.0
+  stop_loss_plpc: 0.015
+  take_profit_plpc: 0.025
+  news_enabled: true
+  news_symbols: 5
+  news_company_headlines: 1
+  news_general_headlines: 3
+  news_refresh_minutes: 60
+  news_lookback_hours: 24
 alpaca:
   trading_base_url: "https://paper-api.alpaca.markets"
   data_base_url: "https://data.alpaca.markets"

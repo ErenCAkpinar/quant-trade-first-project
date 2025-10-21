@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Dict, Iterable, Literal, Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class ProjectConfig(BaseModel):
@@ -25,6 +25,8 @@ class CostConfig(BaseModel):
     spread_bps: float = 2.0
     impact_k: float = 0.9
     borrow_bps_month: float = 30.0
+    commission_bps: float = 0.5
+    timing_slippage_bps: float = 1.0
 
     @property
     def borrow_daily(self) -> float:
@@ -61,10 +63,14 @@ class RegimeConfig(BaseModel):
     breadth_thresholds: Dict[str, float] = Field(
         default_factory=lambda: {"risk_off": 0.45, "risk_on": 0.6}
     )
+    breadth_window_days: int = 200
+    vol_window_days: int = 20
     corr_window_days: int = 60
+    dispersion_window_days: int = 20
     vix_curve_source: str = "csv"
 
-    @validator("breadth_thresholds")
+    @field_validator("breadth_thresholds")
+    @classmethod
     def check_thresholds(cls, value: Dict[str, float]) -> Dict[str, float]:
         if not {"risk_off", "risk_on"}.issubset(value.keys()):
             raise ValueError("breadth_thresholds must include risk_off and risk_on")
@@ -79,12 +85,21 @@ class GovernanceConfig(BaseModel):
 class ReportConfig(BaseModel):
     html: str = "reports/equities_bobe.html"
     trades_csv: str = "reports/trades.csv"
+    runs_dir: str = "reports/runs"
 
 
 class LiveConfig(BaseModel):
     broker: Literal["alpaca", "dummy"] = "alpaca"
     poll_interval_sec: int = 60
     paper_start_cash: float = 100000.0
+    stop_loss_plpc: Optional[float] = None
+    take_profit_plpc: Optional[float] = None
+    news_enabled: bool = False
+    news_symbols: int = 3
+    news_company_headlines: int = 1
+    news_general_headlines: int = 3
+    news_refresh_minutes: int = 60
+    news_lookback_hours: int = 24
 
 
 class AlpacaConfig(BaseModel):

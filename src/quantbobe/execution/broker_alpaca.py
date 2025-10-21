@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import os
+import warnings
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Dict, Iterable, Optional
 
 from dotenv import load_dotenv
 from loguru import logger
+
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    message="websockets\\.legacy is deprecated",
+    module="websockets.legacy",
+)
 
 try:  # pragma: no cover - optional dependency import
     from alpaca.trading.client import TradingClient
@@ -21,11 +29,6 @@ except Exception:  # pragma: no cover - import fallback if package missing
     LimitOrderRequest = None
     MarketOrderRequest = None
     _ALPACA_PY_AVAILABLE = False
-
-try:  # pragma: no cover - legacy dependency fallback
-    import alpaca_trade_api as tradeapi
-except Exception:  # pragma: no cover - optional dependency import
-    tradeapi = None
 
 if TYPE_CHECKING:  # pragma: no cover - type checking only
     from ..config.schema import AlpacaConfig
@@ -53,7 +56,7 @@ class AlpacaBroker:
             if config
             else os.getenv("ALPACA_PAPER_BASE_URL", "https://paper-api.alpaca.markets")
         )
-        self._client, self._mode = self._init_client()
+        self._client = self._init_client()
 
     def _init_client(self):
         api_key = os.getenv(self._key_env)
@@ -65,7 +68,7 @@ class AlpacaBroker:
                 self._key_env,
                 self._secret_env,
             )
-            return None, "none"
+            return None
         if _ALPACA_PY_AVAILABLE and TradingClient is not None:
             try:
                 import inspect
@@ -89,19 +92,11 @@ class AlpacaBroker:
                 elif "base_url" in params:
                     call_kwargs["base_url"] = self._base_url
                 client = TradingClient(*call_args, **call_kwargs)
-                return client, "alpaca_py"
+                return client
             except Exception as exc:  # pragma: no cover - defensive guard
                 logger.exception("Failed to initialise Alpaca TradingClient: %s", exc)
-        if tradeapi is not None:
-            try:
-                client = tradeapi.REST(api_key, api_secret, base_url=self._base_url)
-                return client, "trade_api"
-            except Exception as exc:  # pragma: no cover - defensive guard
-                logger.exception(
-                    "Failed to initialise alpaca-trade-api REST client: %s", exc
-                )
         logger.warning("No Alpaca client available; running in dry mode.")
-        return None, "none"
+        return None
 
     def get_cash(self) -> float:
         if self._client is None:
@@ -109,26 +104,54 @@ class AlpacaBroker:
         account = self._client.get_account()
         return float(account.cash)
 
-    def get_positions(self) -> Dict[str, float]:
+    def get_account_overview(self) -> Dict[str, float]:
         if self._client is None:
-            return {}
+            return {
+                "cash": 0.0,
+                "buying_power": 0.0,
+                "equity": 0.0,
+                "portfolio_value": 0.0,
+            }
+        account = self._client.get_account()
+        return {
+            "cash": float(getattr(account, "cash", 0.0)),
+            "buying_power": float(getattr(account, "buying_power", 0.0)),
+            "equity": float(getattr(account, "equity", 0.0)),
+            "portfolio_value": float(getattr(account, "portfolio_value", 0.0)),
+        }
+
+    def _list_positions(self):
+        if self._client is None:
+            return []
+        if hasattr(self._client, "get_all_positions"):
+            return self._client.get_all_positions()
+        if hasattr(self._client, "list_positions"):
+            return self._client.list_positions()
+        return []
+
+    def get_positions(self) -> Dict[str, float]:
         positions = {}
-        if self._mode == "alpaca_py":
-            to_iter = self._client.get_all_positions()
-        else:
-            to_iter = self._client.list_positions()
-        for position in to_iter:
+        for position in self._list_positions():
             qty = float(getattr(position, "qty", 0))
             positions[position.symbol] = qty
         return positions
 
+    def get_position_status(self) -> Dict[str, Dict[str, float]]:
+        status: Dict[str, Dict[str, float]] = {}
+        for position in self._list_positions():
+            qty = float(getattr(position, "qty", 0))
+            plpc = getattr(position, "unrealized_plpc", None)
+            try:
+                plpc_value = float(plpc) if plpc is not None else None
+            except (TypeError, ValueError):
+                plpc_value = None
+            status[position.symbol] = {"qty": qty, "plpc": plpc_value}
+        return status
+
     def cancel_open_orders(self) -> None:
         if self._client is None:
             return
-        if self._mode == "alpaca_py":
-            self._client.cancel_orders()
-        else:
-            self._client.cancel_all_orders()
+        self._client.cancel_orders()
 
     def submit_orders(self, tickets: Iterable[OrderTicket]) -> None:
         orders = list(tickets)
@@ -157,53 +180,33 @@ class AlpacaBroker:
                 logger.exception("Failed to submit order for %s: %s", order.symbol, exc)
 
     def _submit_order(self, order: OrderTicket, qty: float, side: str) -> None:
-        order_type = order.type.lower()
-        if self._mode == "alpaca_py":
-            tif = TimeInForce.DAY
-            if order_type == "market":
-                request = MarketOrderRequest(
-                    symbol=order.symbol,
-                    qty=qty,
-                    side=OrderSide(side),
-                    time_in_force=tif,
-                )
-            elif order_type == "limit":
-                if order.limit_price is None:
-                    raise ValueError("Limit price required for limit orders")
-                price = (
-                    Decimal(str(order.limit_price))
-                    .quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-                    .normalize()
-                )
-                request = LimitOrderRequest(
-                    symbol=order.symbol,
-                    qty=qty,
-                    side=OrderSide(side),
-                    limit_price=float(price),
-                    time_in_force=tif,
-                )
-            else:
-                raise ValueError(f"Unsupported order type '{order.type}'")
-            self._client.submit_order(request)
-        elif self._mode == "trade_api":
-            params = {
-                "symbol": order.symbol,
-                "qty": qty,
-                "side": side,
-                "time_in_force": "day",
-                "type": order_type,
-            }
-            if order_type == "limit":
-                if order.limit_price is None:
-                    raise ValueError("Limit price required for limit orders")
-                params["limit_price"] = float(
-                    Decimal(str(order.limit_price)).quantize(
-                        Decimal("0.01"), rounding=ROUND_HALF_UP
-                    )
-                )
-            self._client.submit_order(**params)
-        else:
+        if self._client is None:
             raise RuntimeError("No Alpaca client configured")
+        order_type = order.type.lower()
+        tif = TimeInForce.DAY
+        if order_type == "market":
+            request = MarketOrderRequest(
+                symbol=order.symbol,
+                qty=qty,
+                side=OrderSide(side),
+                time_in_force=tif,
+            )
+        elif order_type == "limit":
+            if order.limit_price is None:
+                raise ValueError("Limit price required for limit orders")
+            price = Decimal(str(order.limit_price)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            request = LimitOrderRequest(
+                symbol=order.symbol,
+                qty=qty,
+                side=OrderSide(side),
+                limit_price=float(price),
+                time_in_force=tif,
+            )
+        else:
+            raise ValueError(f"Unsupported order type '{order.type}'")
+        self._client.submit_order(request)
 
     def market_clock(self):
         if self._client is None:

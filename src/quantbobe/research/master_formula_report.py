@@ -95,7 +95,9 @@ class MasterFormulaReport:
     def returns(self) -> pd.DataFrame:
         if self._returns is None:
             closes = self.sanitized_daily["adj_close"].unstack("symbol").sort_index()
-            self._returns = closes.pct_change().dropna(how="all")
+            returns = closes.pct_change(fill_method=None)
+            returns = returns.replace([np.inf, -np.inf], np.nan).dropna(how="all")
+            self._returns = returns
         return self._returns
 
     @property
@@ -507,7 +509,7 @@ class MasterFormulaReport:
         )
         info_ratio = {}
         if benchmark is not None:
-            bench_returns = benchmark.pct_change().dropna()
+            bench_returns = benchmark.pct_change(fill_method=None).dropna()
             for symbol in self.symbols:
                 asset_ret = self.returns[symbol].dropna()
                 if asset_ret.empty or bench_returns.empty:
