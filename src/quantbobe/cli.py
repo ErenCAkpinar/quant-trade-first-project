@@ -4,9 +4,9 @@ import argparse
 import json
 import math
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Mapping
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -36,6 +36,8 @@ def ingest_command(config_path: str) -> None:
 
 def _prepare_run_dir(ctx, config_path: str) -> Path:
     runs_root = Path(ctx.settings.reports.runs_dir)
+    tz: tzinfo
+
     try:
         tz = ZoneInfo(ctx.settings.project.timezone)
     except Exception:
@@ -53,14 +55,16 @@ def _write_run_artifacts(
     run_dir: Path,
     result,
     trades_df: pd.DataFrame,
-    summary: Dict[str, float],
+    summary: Mapping[str, float | None],
 ) -> None:
-    metrics = {}
+    metrics: dict[str, float | None] = {}
     for key, value in summary.items():
-        if value is None or (isinstance(value, float) and math.isnan(value)):
+        if value is None:
             metrics[key] = None
-        else:
-            metrics[key] = float(value)
+            continue
+        numeric = float(value)
+        metrics[key] = None if math.isnan(numeric) else numeric
+
     metrics_path = run_dir / "metrics.json"
     metrics_json = json.dumps(metrics, indent=2, sort_keys=True)
     metrics_path.write_text(metrics_json, encoding="utf-8")
@@ -74,8 +78,10 @@ def _write_run_artifacts(
     for key, value in metrics.items():
         display = "N/A" if value is None else f"{value:.4f}"
         summary_lines.append(f"- **{key}**: {display}")
+
     (run_dir / "summary.md").write_text("\n".join(summary_lines), encoding="utf-8")
     logger.info("Saved reproducibility bundle to {}", run_dir)
+
 
 
 def backtest_command(config_path: str) -> None:

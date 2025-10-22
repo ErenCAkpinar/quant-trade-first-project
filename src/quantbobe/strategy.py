@@ -102,9 +102,14 @@ def compute_sleeve_weights(ctx: StrategyContext) -> Dict[str, pd.DataFrame]:
             timeframes = [(params.lookback_mom_months, 1.0)]
         else:
             timeframes = [(3, 0.25), (6, 0.35), (12, 0.40)]
+        skip_recent = (
+            True
+            if not params or params.skip_recent_month is None
+            else bool(params.skip_recent_month)
+        )
         momentum_config = MomentumConfig(
             timeframes=timeframes,
-            skip_recent_month=params.skip_recent_month if params else True,
+            skip_recent_month=skip_recent,
         )
         momentum_model = MultiTimeframeMomentum(momentum_config)
         mom_scores = momentum_model.compute_combined_momentum(closes)

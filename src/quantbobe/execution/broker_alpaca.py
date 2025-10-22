@@ -4,7 +4,7 @@ import os
 import warnings
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
-from typing import TYPE_CHECKING, Dict, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, cast
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -23,11 +23,11 @@ try:  # pragma: no cover - optional dependency import
 
     _ALPACA_PY_AVAILABLE = True
 except Exception:  # pragma: no cover - import fallback if package missing
-    TradingClient = None
-    OrderSide = None
-    TimeInForce = None
-    LimitOrderRequest = None
-    MarketOrderRequest = None
+    TradingClient = cast(Any, None)  # type: ignore[misc]
+    OrderSide = cast(Any, None)  # type: ignore[misc]
+    TimeInForce = cast(Any, None)  # type: ignore[misc]
+    LimitOrderRequest = cast(Any, None)  # type: ignore[misc]
+    MarketOrderRequest = cast(Any, None)  # type: ignore[misc]
     _ALPACA_PY_AVAILABLE = False
 
 if TYPE_CHECKING:  # pragma: no cover - type checking only
@@ -136,8 +136,8 @@ class AlpacaBroker:
             positions[position.symbol] = qty
         return positions
 
-    def get_position_status(self) -> Dict[str, Dict[str, float]]:
-        status: Dict[str, Dict[str, float]] = {}
+    def get_position_status(self) -> Dict[str, Dict[str, float | None]]:
+        status: Dict[str, Dict[str, float | None]] = {}
         for position in self._list_positions():
             qty = float(getattr(position, "qty", 0))
             plpc = getattr(position, "unrealized_plpc", None)
@@ -183,9 +183,13 @@ class AlpacaBroker:
         if self._client is None:
             raise RuntimeError("No Alpaca client configured")
         order_type = order.type.lower()
+        if TimeInForce is None or OrderSide is None:
+            raise RuntimeError("alpaca-py TimeInForce/OrderSide enums unavailable")
         tif = TimeInForce.DAY
         if order_type == "market":
-            request = MarketOrderRequest(
+            if MarketOrderRequest is None:
+                raise RuntimeError("alpaca-py MarketOrderRequest unavailable")
+            request_obj: object = MarketOrderRequest(
                 symbol=order.symbol,
                 qty=qty,
                 side=OrderSide(side),
@@ -197,7 +201,9 @@ class AlpacaBroker:
             price = Decimal(str(order.limit_price)).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
-            request = LimitOrderRequest(
+            if LimitOrderRequest is None:
+                raise RuntimeError("alpaca-py LimitOrderRequest unavailable")
+            request_obj = LimitOrderRequest(
                 symbol=order.symbol,
                 qty=qty,
                 side=OrderSide(side),
@@ -206,7 +212,7 @@ class AlpacaBroker:
             )
         else:
             raise ValueError(f"Unsupported order type '{order.type}'")
-        self._client.submit_order(request)
+        self._client.submit_order(request_obj)
 
     def market_clock(self):
         if self._client is None:

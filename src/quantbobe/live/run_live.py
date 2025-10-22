@@ -94,9 +94,18 @@ def run_live(config_path: str) -> None:
         latest_target = target.iloc[-1].copy()
         prices = _current_prices(history)
         account_overview = broker.get_account_overview()
-        cash = account_overview.get("cash") or settings.live.paper_start_cash
+        cash_value = account_overview.get("cash")
+        fallback_cash = getattr(settings.live, "paper_start_cash", 0.0)
+        if cash_value is not None:
+            cash = float(cash_value)
+        else:
+            cash = float(fallback_cash)
         position_status = broker.get_position_status()
-        positions = {sym: info.get("qty", 0.0) for sym, info in position_status.items()}
+        positions: dict[str, float] = {}
+        for sym, info in position_status.items():
+            qty_raw = info.get("qty", 0.0)
+            qty_float = float(qty_raw) if qty_raw is not None else 0.0
+            positions[sym] = qty_float
         equity = cash + sum(
             qty * prices.get(sym, 0.0) for sym, qty in positions.items()
         )
@@ -109,8 +118,9 @@ def run_live(config_path: str) -> None:
         stop_threshold = settings.live.stop_loss_plpc
         take_threshold = settings.live.take_profit_plpc
         for sym, info in position_status.items():
-            qty = info.get("qty", 0.0)
-            plpc = info.get("plpc")
+            qty = positions.get(sym, 0.0)
+            plpc_raw = info.get("plpc")
+            plpc = float(plpc_raw) if plpc_raw is not None else None
             if qty == 0 or plpc is None:
                 continue
             trigger: str | None = None

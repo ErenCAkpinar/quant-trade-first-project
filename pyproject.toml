@@ -2,7 +2,7 @@
 name = "quant-bobe"
 version = "0.1.0"
 description = "Best-of-Breed Ensemble equities strategy with Alpaca paper trading"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
   { name = "Quant BOBE" }
 ]
@@ -26,7 +26,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["black", "ruff", "mypy", "pytest"]
+dev = [
+  "black",
+  "ruff",
+  "mypy",
+  "pytest",
+  "types-PyYAML",
+  "types-requests",
+  "types-six"
+]
 
 [build-system]
 requires = ["setuptools", "wheel"]
@@ -44,7 +52,7 @@ select = ["E", "F", "W", "B", "I"]
 
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 strict = false
 ignore_missing_imports = true
 

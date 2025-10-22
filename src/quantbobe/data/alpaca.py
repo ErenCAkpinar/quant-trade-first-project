@@ -5,7 +5,7 @@ import warnings
 from datetime import datetime, timezone
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Any, Iterable, cast
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -60,7 +60,7 @@ class AlpacaProvider(IDataProvider):
                 f"{self.alpaca_config.secret_env} are set."
             )
             raise EnvironmentError(message)
-        self._alpaca_py_modules = None
+        self._alpaca_py_modules: dict[str, Any] | None = None
         self.client = self._try_init_alpaca_py(key, secret)
         if self.client is None:
             raise ImportError(
@@ -133,8 +133,8 @@ class AlpacaProvider(IDataProvider):
             raise ImportError("alpaca-py is required to resolve Alpaca timeframes")
         if tf not in _TIMEFRAME_MAP:
             raise ValueError(f"Unsupported Alpaca timeframe '{tf}'")
-        TimeFrame = modules["TimeFrame"]
-        TimeFrameUnit = modules["TimeFrameUnit"]
+        TimeFrame = cast(Any, modules["TimeFrame"])
+        TimeFrameUnit = cast(Any, modules["TimeFrameUnit"])
         return _TIMEFRAME_MAP[tf](TimeFrame, TimeFrameUnit)
 
     def get_daily_bars(
@@ -146,8 +146,8 @@ class AlpacaProvider(IDataProvider):
         start_utc = _ensure_utc(start)
         end_utc = _ensure_utc(end)
         timeframe = self._resolve_timeframe()
-        modules = self._alpaca_py_modules or {}
-        StockBarsRequest = modules.get("StockBarsRequest")
+        modules: dict[str, Any] = self._alpaca_py_modules or {}
+        StockBarsRequest = cast(Any, modules.get("StockBarsRequest"))
         if StockBarsRequest is None:
             raise ImportError("alpaca-py components unavailable to request bars")
         request = StockBarsRequest(
@@ -209,7 +209,7 @@ def _ensure_urllib3_six_moves() -> None:
     if "urllib3.packages.six.moves" in sys.modules:
         return
     try:
-        import six
+        import six  # type: ignore[import-untyped]
     except Exception:
         return
     # Register base module alias if needed
@@ -223,8 +223,8 @@ def _ensure_urllib3_six_moves() -> None:
     def _dir():
         return [attr for attr in dir(moves) if not attr.startswith("__")]
 
-    module.__getattr__ = _getattr  # type: ignore[attr-defined]
-    module.__dir__ = _dir  # type: ignore[attr-defined]
+    module.__getattr__ = _getattr  # type: ignore[method-assign]
+    module.__dir__ = _dir  # type: ignore[method-assign]
 
     for attr in _dir():
         try:

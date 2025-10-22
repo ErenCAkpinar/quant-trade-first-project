@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
-import requests
+import requests  # type: ignore[import-untyped]
 from dotenv import load_dotenv
 from loguru import logger
 

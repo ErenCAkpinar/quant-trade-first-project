@@ -224,8 +224,8 @@ class MasterFormulaReport:
         }
 
     def _drawdown_block(self) -> Dict[str, Any]:
-        dd_primary = {}
-        dd_log = {}
+        dd_primary: dict[str, float] = {}
+        dd_log: dict[str, float] = {}
         for symbol in self.symbols:
             cumulative = self.cumulative_equity[symbol]
             if cumulative.dropna().empty:
@@ -237,8 +237,8 @@ class MasterFormulaReport:
             dd_log[symbol] = _max_drawdown(log_curve)
         compare = {}
         for symbol in self.symbols:
-            p = dd_primary.get(symbol)
-            log_value = dd_log.get(symbol)
+            p = dd_primary[symbol]
+            log_value = dd_log[symbol]
             if np.isnan(p) or np.isnan(log_value):
                 compare[symbol] = CheckResult(
                     p, log_value, 1e-3, np.nan, False, "insufficient data"

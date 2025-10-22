@@ -24,7 +24,7 @@ def vwap_zscores(
     if intraday.empty:
         return pd.DataFrame()
     sector_proxies = sector_proxies or {}
-    earnings_blackout = set(earnings_blackout or [])
+    blackout: set[str] = set(earnings_blackout) if earnings_blackout else set()
 
     intraday = intraday.copy()
     intraday.index.names = ["timestamp", "symbol"]
@@ -33,7 +33,7 @@ def vwap_zscores(
 
     signals: list[dict[str, float | str]] = []
     for symbol, group in intraday.groupby(level="symbol"):
-        if symbol in earnings_blackout:
+        if symbol in blackout:
             continue
         daily = latest_daily[latest_daily["symbol"] == symbol]
         if daily.empty:
