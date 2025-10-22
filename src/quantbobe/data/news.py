@@ -112,10 +112,10 @@ class NewsFetcher:
     def _fetch_newsapi_headlines(self) -> List[NewsArticle]:
         if not self._newsapi_key:
             return []
-        params = {
+        params: dict[str, str] = {
             "category": "business",
             "language": "en",
-            "pageSize": max(self._general_headlines, 3),
+            "pageSize": str(max(self._general_headlines, 3)),
         }
         headers = {"X-Api-Key": self._newsapi_key}
         try:
