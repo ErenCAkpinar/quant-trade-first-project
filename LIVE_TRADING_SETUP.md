@@ -95,3 +95,4 @@ Modify `src/quantbobe/config/default.yaml` to adjust:
 - Strategy parameters
 
 Your system is ready for live paper trading! 🎯
+ try
