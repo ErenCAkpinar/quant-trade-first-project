@@ -7,10 +7,10 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from loguru import logger
-from zoneinfo import ZoneInfo
 
 from .backtest import BacktestEngine, ReportBuilder
 from .live.run_live import run_live
@@ -62,7 +62,8 @@ def _write_run_artifacts(
         else:
             metrics[key] = float(value)
     metrics_path = run_dir / "metrics.json"
-    metrics_path.write_text(json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8")
+    metrics_json = json.dumps(metrics, indent=2, sort_keys=True)
+    metrics_path.write_text(metrics_json, encoding="utf-8")
 
     trades_df.to_csv(run_dir / "trades.csv", index=False)
     result.positions.to_csv(run_dir / "positions.csv")

@@ -59,7 +59,11 @@ class ReportBuilder:
             )
             equity_for_turnover = equity.reindex(daily_notional.index).ffill()
             turnover_series = daily_notional / equity_for_turnover.replace(0, np.nan)
-            turnover = float(turnover_series.mean(skipna=True)) if not turnover_series.empty else 0.0
+            turnover = (
+                float(turnover_series.mean(skipna=True))
+                if not turnover_series.empty
+                else 0.0
+            )
 
         return {
             "CAGR": cagr,

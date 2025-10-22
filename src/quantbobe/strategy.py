@@ -82,8 +82,16 @@ def compute_sleeve_weights(ctx: StrategyContext) -> Dict[str, pd.DataFrame]:
         regime_frame = regime_frame.reindex(closes.index).ffill()
         momentum_scale_series = regime_frame["momentum_scale"].fillna(1.0)
         mean_rev_scale_series = regime_frame["mean_reversion_scale"].fillna(1.0)
-    regime_scale_c = float(momentum_scale_series.iloc[-1]) if not momentum_scale_series.empty else 1.0
-    regime_scale_d = float(mean_rev_scale_series.iloc[-1]) if not mean_rev_scale_series.empty else 1.0
+    regime_scale_c = (
+        float(momentum_scale_series.iloc[-1])
+        if not momentum_scale_series.empty
+        else 1.0
+    )
+    regime_scale_d = (
+        float(mean_rev_scale_series.iloc[-1])
+        if not mean_rev_scale_series.empty
+        else 1.0
+    )
 
     sleeve_weights: dict[str, pd.DataFrame] = {}
 
@@ -143,9 +151,10 @@ def compute_sleeve_weights(ctx: StrategyContext) -> Dict[str, pd.DataFrame]:
                 base_budget = sleeves.C_xsec_qv.risk_budget or 0.85
                 for date, row in weights_df.iterrows():
                     hist_returns = returns.loc[:date].tail(60)
-                    budget = base_budget * float(
-                        momentum_scale_series.reindex([date]).fillna(regime_scale_c).iloc[0]
+                    scale = momentum_scale_series.reindex([date]).fillna(
+                        regime_scale_c
                     )
+                    budget = base_budget * float(scale.iloc[0])
                     if hist_returns.empty or budget == 0:
                         scaled = pd.Series(0.0, index=row.index)
                     else:
@@ -183,7 +192,9 @@ def compute_sleeve_weights(ctx: StrategyContext) -> Dict[str, pd.DataFrame]:
                 latest = latest * (budget / total)
             else:
                 latest = latest * 0
-            sleeve_weights["D_intraday_rev"] = pd.DataFrame([latest], index=[latest_date])
+            sleeve_weights["D_intraday_rev"] = pd.DataFrame(
+                [latest], index=[latest_date]
+            )
 
     if not sleeve_weights:
         raise ValueError(
@@ -225,7 +236,11 @@ def aggregate_target_weights(
     adjusted = target.copy()
     current = pd.Series(0.0, index=target.columns)
     for date in target.index:
-        adv_row = adv.loc[date] if date in adv.index else pd.Series(0.0, index=target.columns)
+        adv_row = (
+            adv.loc[date]
+            if date in adv.index
+            else pd.Series(0.0, index=target.columns)
+        )
         desired = target.loc[date]
         optimized = cost_model.optimize_rebalance_threshold(
             desired,

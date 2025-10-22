@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -90,10 +90,19 @@ class MultiTimeframeMomentum:
     ) -> pd.Series:
         if returns.empty:
             return pd.Series(dtype=float)
-        vol = returns.rolling(window=vol_window, min_periods=vol_window // 2).std(ddof=0)
+        vol = returns.rolling(
+            window=vol_window,
+            min_periods=vol_window // 2,
+        ).std(ddof=0)
         realized = vol.mean(axis=1)
-        long_ma = realized.rolling(window=long_window, min_periods=long_window // 4).mean()
-        long_std = realized.rolling(window=long_window, min_periods=long_window // 4).std(ddof=0)
+        long_ma = realized.rolling(
+            window=long_window,
+            min_periods=long_window // 4,
+        ).mean()
+        long_std = realized.rolling(
+            window=long_window,
+            min_periods=long_window // 4,
+        ).std(ddof=0)
         z = (realized - long_ma) / long_std.replace(0, np.nan)
         z = z.clip(lower=-3, upper=3).fillna(0)
         scale = 1.0 - (z.clip(lower=0) / 3.0) * 0.5
@@ -114,7 +123,7 @@ class MultiTimeframeMomentum:
             by_sector = {"Universe": ranks.index.tolist()}
         sector_count = max(len(by_sector), 1)
         sectors_iter = by_sector.items()
-        for sector, members in sectors_iter:
+        for _sector, members in sectors_iter:
             symbols = ranks.reindex(members).dropna()
             if symbols.empty:
                 continue

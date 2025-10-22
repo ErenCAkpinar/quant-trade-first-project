@@ -102,34 +102,50 @@ class RegimeDetector:
         return _select_price_field(prices)
 
     def _realized_vol(self, returns: pd.DataFrame) -> pd.Series:
-        vol = returns.rolling(window=self.vol_window, min_periods=self.vol_window // 2).std(ddof=0)
+        vol = returns.rolling(
+            window=self.vol_window,
+            min_periods=self.vol_window // 2,
+        ).std(ddof=0)
         return vol.mean(axis=1).ffill()
 
     def _corr_score(self, returns: pd.DataFrame) -> pd.Series:
         if returns.shape[1] < 2:
             return pd.Series(0.0, index=returns.index)
-        rolling = returns.rolling(window=self.corr_window, min_periods=self.corr_window // 2)
+        rolling = returns.rolling(
+            window=self.corr_window,
+            min_periods=self.corr_window // 2,
+        )
         correlations = rolling.corr().groupby(level=0).apply(
-            lambda mat: mat.where(np.triu(np.ones(mat.shape), k=1).astype(bool)).stack().mean()
+            lambda mat: mat.where(
+                np.triu(np.ones(mat.shape), k=1).astype(bool)
+            ).stack().mean()
         )
         return correlations.ffill().fillna(0.0)
 
     def _dispersion(self, returns: pd.DataFrame) -> pd.Series:
-        dispersion = returns.rolling(window=self.dispersion_window, min_periods=5).std(ddof=0)
+        dispersion = returns.rolling(
+            window=self.dispersion_window,
+            min_periods=5,
+        ).std(ddof=0)
         return dispersion.mean(axis=1).ffill().fillna(0.0)
 
     def evaluate(self, prices: pd.DataFrame) -> pd.DataFrame:
         wide = self._wide_prices(prices)
         if wide.empty:
-            return pd.DataFrame(columns=["label", "momentum_scale", "mean_reversion_scale"])
+            return pd.DataFrame(
+                columns=["label", "momentum_scale", "mean_reversion_scale"]
+            )
         returns = wide.pct_change(fill_method=None).dropna()
-        breadth = trend_breadth(prices, window=self.breadth_window).reindex(returns.index).ffill()
+        breadth = trend_breadth(prices, window=self.breadth_window)
+        breadth = breadth.reindex(returns.index).ffill()
         realized_vol = self._realized_vol(returns)
         corr = self._corr_score(returns)
         dispersion = self._dispersion(returns)
 
         breadth_score = (1 - breadth.clip(0, 1)).fillna(0.5)
-        vol_z = (realized_vol - realized_vol.rolling(252, min_periods=60).mean()) / realized_vol.rolling(252, min_periods=60).std(ddof=0)
+        long_mean = realized_vol.rolling(252, min_periods=60).mean()
+        long_std = realized_vol.rolling(252, min_periods=60).std(ddof=0)
+        vol_z = (realized_vol - long_mean) / long_std
         vol_score = vol_z.clip(lower=-2, upper=4)
         vol_min = vol_score.min()
         vol_max = vol_score.max()
@@ -139,7 +155,11 @@ class RegimeDetector:
         else:
             vol_score = (vol_score - vol_min) / vol_range
         corr_score = corr.clip(lower=-1, upper=1).abs()
-        median_disp = dispersion.rolling(252, min_periods=60).median().replace(0, np.nan)
+        median_disp = (
+            dispersion.rolling(252, min_periods=60)
+            .median()
+            .replace(0, np.nan)
+        )
         disp_score = dispersion / median_disp
         disp_score = disp_score.clip(lower=0, upper=5)
         disp_min = disp_score.min()
@@ -169,15 +189,20 @@ class RegimeDetector:
             elif score <= 0.4 and breadth_val >= 0.55:
                 outcome = RegimeOutcome("risk_on", 1.0, 1.0)
             else:
-                outcome = RegimeOutcome("transition", 0.85, 0.7 if corr_val < 0.6 else 0.5)
+                mean_rev = 0.7 if corr_val < 0.6 else 0.5
+                outcome = RegimeOutcome("transition", 0.85, mean_rev)
             records.append((date, outcome))
 
         index = [ts for ts, _ in records]
         df = pd.DataFrame(
             {
                 "label": [outcome.label for _, outcome in records],
-                "momentum_scale": [outcome.momentum_scale for _, outcome in records],
-                "mean_reversion_scale": [outcome.mean_reversion_scale for _, outcome in records],
+                "momentum_scale": [
+                    outcome.momentum_scale for _, outcome in records
+                ],
+                "mean_reversion_scale": [
+                    outcome.mean_reversion_scale for _, outcome in records
+                ],
             },
             index=index,
         )

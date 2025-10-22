@@ -36,7 +36,9 @@ class MeanReversionSignals:
     def __init__(self, config: MeanReversionConfig | None = None) -> None:
         self.config = config or MeanReversionConfig()
 
-    def _rolling_stats(self, returns: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def _rolling_stats(
+        self, returns: pd.DataFrame
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
         mean = returns.rolling(
             window=self.config.lookback_window,
             min_periods=self.config.min_observations,
@@ -90,7 +92,10 @@ class MeanReversionSignals:
         data: pd.DataFrame,
         regime_filter: Optional[pd.Series] = None,
     ) -> pd.DataFrame:
-        closes = _extract_prices(data, "adj_close") if "adj_close" in data.columns else _extract_prices(data, "close")
+        if "adj_close" in data.columns:
+            closes = _extract_prices(data, "adj_close")
+        else:
+            closes = _extract_prices(data, "close")
         if closes.empty:
             return closes
         returns = closes.pct_change(fill_method=None).fillna(0)
@@ -101,7 +106,9 @@ class MeanReversionSignals:
         if self.config.gap_weight > 0:
             gaps = self.compute_overnight_gaps(data)
             gap_signal = self.gap_signals(gaps)
-            signals = (1 - self.config.gap_weight) * signals + self.config.gap_weight * gap_signal.reindex(signals.index).fillna(0.0)
+            weight = 1 - self.config.gap_weight
+            gap_component = gap_signal.reindex(signals.index).fillna(0.0)
+            signals = weight * signals + self.config.gap_weight * gap_component
         if regime_filter is not None:
             signals = signals.mul(regime_filter.clip(lower=0.0), axis=0)
         if self.config.vol_scaling:

@@ -100,7 +100,9 @@ def run_live(config_path: str) -> None:
         equity = cash + sum(
             qty * prices.get(sym, 0.0) for sym, qty in positions.items()
         )
-        current_weights = _positions_to_weights(positions, prices, max(equity, 1.0)).copy()
+        current_weights = _positions_to_weights(
+            positions, prices, max(equity, 1.0)
+        ).copy()
 
         risk_orders: list[OrderTicket] = []
         risk_symbols: set[str] = set()
@@ -143,7 +145,9 @@ def run_live(config_path: str) -> None:
             try:
                 broker.cancel_open_orders()
             except Exception as exc:  # pragma: no cover - defensive guard
-                logger.warning("Failed to cancel open orders prior to risk exits: %s", exc)
+                logger.warning(
+                    "Failed to cancel open orders prior to risk exits: %s", exc
+                )
 
         slices = router.reconcile_positions(
             latest_target, current_weights, prices, equity
