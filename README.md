@@ -108,7 +108,7 @@ Fine-tune sleeves under `src/quantbobe/config/default.yaml` or author new YAML f
 - [ ] Expand `features/` to include volatility breakout sleeve.
 - [ ] Add Docker image publishing in CI.
 - [ ] Surface backtest runs in `web/` dashboard via API.
-- Track issues and progress: https://github.com/erenakpinar/quant-trade-first-project-2/issues
+- Track issues and progress: https://github.com/ErenCAkpinar/quant-trade-first-project/issues
 
 ## Public vs Private Scope
 
