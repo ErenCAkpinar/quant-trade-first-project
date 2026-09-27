@@ -1,6 +1,6 @@
 # Quant BOBE (Equities + Alpaca Paper)
 
-Best-of-Breed Ensemble (BOBE) equities strategy scaffold with Alpaca paper trading. The public repository focuses on research, backtesting, and reporting; execution adapters and proprietary data stay private.
+Best-of-Breed Ensemble (BOBE) equities strategy scaffold with Alpaca paper trading. The public repository covers research, backtesting, reporting and the Alpaca paper-trading adapter; proprietary data and live-money execution stay private.
 
 ## Quickstart
 
@@ -52,11 +52,12 @@ Signals are generated per sleeve, combined under shared risk constraints, passed
 - **Costs** combine bid/ask spread, market-impact (Kyle lambda), borrow for shorts, and slippage buffers.
 - **Live loop** (see `LIVE_TRADING_SETUP.md`) refreshes data every `poll_interval_sec`, reconciles filled orders, and records live P&L snapshots.
 
-## Walk-Forward Research
+## Research Workflow
 
-- Configurable rebalance frequency and rolling calibration windows per sleeve.
-- Walk-forward validation supported by `RegimeDetector` (breadth, volatility, dispersion, correlations) to modulate sleeve risk.
-- Use `tests/test_backtest_engine.py` and new `reports/runs/` artifacts to validate quantitative changes across commits.
+- Configurable rebalance frequency (for example monthly or daily) and rolling lookback windows per sleeve.
+- `RegimeDetector` computes rolling breadth, volatility, dispersion and correlation scores that scale sleeve risk.
+- Use `tests/test_backtest_engine.py` and the `reports/runs/` artifacts to compare quantitative changes across commits.
+- Walk-forward validation (rolling train/test windows) is not implemented yet; see the roadmap.
 
 ## Reports & Reproducibility
 
@@ -64,9 +65,6 @@ Signals are generated per sleeve, combined under shared risk constraints, passed
   - `metrics.json` with CAGR, Sharpe, drawdowns, VaR, turnover.
   - `positions.csv`, `equity.csv`, `pnl.csv`, and `trades.csv` snapshots.
   - `config.yaml` (exact config used) and `summary.md` (human-readable log).
-- Lightweight preview assets remain versioned in `reports/`:
-
-![Sample report card](reports/sample-report.png)
 
 ## Configuration Example
 
@@ -100,11 +98,12 @@ Fine-tune sleeves under `src/quantbobe/config/default.yaml` or author new YAML f
 ## Known Limitations
 
 - Alpaca data feed latencies can impact minute-level rebalancing; swap adapters for production.
-- Walk-forward splits assume daily bars; intraday extensions require new ingestion paths.
+- Backtests assume daily bars; intraday extensions require new ingestion paths.
 - Position reconciliation is paper-trading only; production brokers need custom compliance layers.
 
 ## Roadmap
 
+- [ ] Walk-forward validation with rolling train/test windows.
 - [ ] Expand `features/` to include volatility breakout sleeve.
 - [ ] Add Docker image publishing in CI.
 - [ ] Surface backtest runs in `web/` dashboard via API.
