@@ -8,13 +8,7 @@ python -m src.quantbobe.cli report --config src/quantbobe/config/default.yaml
 python -m src.quantbobe.live.run_live --config src/quantbobe/config/default.yaml
 ```
 
-The repository only keeps lightweight summary artifacts. Full HTML reports, CSV exports, and large JSON files are excluded from version control.
-
-## Sample Output
-
-The image below shows a condensed example of the equity curve card that the HTML report renders.
-
-![Sample report card](sample-report.png)
+The repository keeps no generated reports. Full HTML reports, CSV exports and large JSON files are excluded from version control.
 
 Re-generate the full report locally after every backtest:
 
